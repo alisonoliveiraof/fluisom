@@ -3,7 +3,7 @@ import QuizLayout from '../layouts/QuizLayout.vue'
 import { canProceed, maxReachableStep } from '../quiz/quizState'
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/pv',
