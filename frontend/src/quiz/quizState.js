@@ -1,5 +1,7 @@
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import { relationships, genres } from '../data/quizData'
+import { clearQuizDraft, loadQuizDraft, saveQuizDraft } from './quizPersistence'
+import { maskWhatsapp } from '../utils/masks'
 
 export const initialForm = () => ({
   relationship: '',
@@ -30,6 +32,43 @@ export const initialPayment = () => ({
 export const form = reactive(initialForm())
 export const payment = reactive(initialPayment())
 
+const savedDraft = loadQuizDraft()
+if (savedDraft?.form) {
+  Object.assign(form, initialForm(), savedDraft.form)
+  if (form.whatsapp) form.whatsapp = maskWhatsapp(form.whatsapp)
+}
+if (savedDraft?.payment) {
+  Object.assign(payment, initialPayment(), savedDraft.payment)
+}
+
+export function getSavedOrderId() {
+  return savedDraft?.orderId || null
+}
+
+let persistOrderId = savedDraft?.orderId || null
+let persistTimer = null
+
+export function setPersistOrderId(id) {
+  persistOrderId = id
+}
+
+export function persistQuizNow() {
+  saveQuizDraft({
+    form: { ...form },
+    payment: { ...payment },
+    orderId: persistOrderId,
+    savedAt: Date.now(),
+  })
+}
+
+export function scheduleQuizPersist() {
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(persistQuizNow, 300)
+}
+
+watch(form, scheduleQuizPersist, { deep: true })
+watch(payment, scheduleQuizPersist, { deep: true })
+
 export function canProceed(step) {
   if (step === 1) {
     if (!form.relationship || !form.honoredName.trim()) return false
@@ -51,6 +90,7 @@ export function canProceed(step) {
 export function resetQuizState() {
   Object.assign(form, initialForm())
   Object.assign(payment, initialPayment())
+  clearQuizDraft()
 }
 
 export function getRelationshipLabel() {

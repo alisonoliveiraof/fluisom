@@ -1,15 +1,8 @@
 <script setup>
 import { useQuiz } from '../../composables/useQuiz'
+import VturbPlayer from '../../components/VturbPlayer.vue'
 
-const {
-  honoredDisplay,
-  videoPlaying,
-  videoProgress,
-  videoWaveBars,
-  toggleVideo,
-  goNext,
-  goBack,
-} = useQuiz()
+const { honoredDisplay, goNext, goBack } = useQuiz()
 </script>
 
 <template>
@@ -20,28 +13,11 @@ const {
     <div class="bounce-icon">🎶</div>
     <h1 class="title">Você está quase lá!</h1>
     <p class="subtitle">
-      A um passo de presentear <span class="highlight-name">{{ honoredDisplay }}</span> com uma música que vai fluir para sempre em seu coração...
+      A um passo de presentear <span class="highlight-name">{{ honoredDisplay }}</span> com uma música que vai fluir para sempre em seu coração. Enquanto produzimos sua música personalizada, assista este vídeo importante que irá explicar como funcionará a entrega.
     </p>
 
-    <div class="video-player">
-      <div class="video-inner">
-        <button type="button" class="play-btn play-btn-lg" @click="toggleVideo">
-          {{ videoPlaying ? '⏸' : '▶' }}
-        </button>
-        <span class="video-badge">3:00</span>
-        <span class="video-label">Como funciona a entrega</span>
-        <div class="video-progress-track">
-          <div class="video-progress-fill" :style="{ width: videoProgress + '%' }" />
-        </div>
-        <div class="video-waves">
-          <span
-            v-for="bar in videoWaveBars"
-            :key="bar"
-            class="video-wave-bar"
-            :style="{ animationDelay: bar * 0.1 + 's' }"
-          />
-        </div>
-      </div>
+    <div class="video-player vturb-player-wrap">
+      <VturbPlayer />
     </div>
 
     <nav class="nav nav-center">

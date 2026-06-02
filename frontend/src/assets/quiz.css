@@ -472,6 +472,15 @@
   box-shadow: 0 12px 40px rgba(0, 153, 184, 0.12);
   margin-bottom: 28px;
 }
+.vturb-player-wrap {
+  width: 100%;
+  max-width: 100%;
+  background: #0d2137;
+  min-height: 220px;
+}
+.vturb-player-wrap .vturb-embed {
+  min-height: 200px;
+}
 .video-inner {
   position: relative;
   width: 100%;

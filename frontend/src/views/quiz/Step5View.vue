@@ -16,6 +16,7 @@ const {
   canProceed,
   goToPayment,
   goBack,
+  onWhatsappInput,
 } = useQuiz()
 </script>
 
@@ -76,7 +77,15 @@ const {
         </label>
         <div class="input-icon-wrap">
           <span class="input-prefix input-prefix-br">🇧🇷 +55</span>
-          <input v-model="form.whatsapp" type="tel" class="input input-with-icon input-br" placeholder="(00) 00000-0000" />
+          <input
+            :value="form.whatsapp"
+            type="tel"
+            class="input input-with-icon input-br"
+            placeholder="(00) 00000-0000"
+            inputmode="numeric"
+            maxlength="15"
+            @input="onWhatsappInput"
+          />
         </div>
       </div>
       <label class="discrete-box" @click="form.discreteMode = !form.discreteMode">

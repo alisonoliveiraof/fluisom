@@ -2,6 +2,7 @@ import { ref, computed, watch, onUnmounted, inject, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 const QUIZ_KEY = Symbol('quiz')
+
 import {
   form,
   payment,
@@ -9,6 +10,9 @@ import {
   resetQuizState,
   getRelationshipLabel,
   getGenreLabel,
+  getSavedOrderId,
+  setPersistOrderId,
+  persistQuizNow,
 } from '../quiz/quizState'
 import {
   relationships,
@@ -17,6 +21,7 @@ import {
   guarantees,
   confettiEmojis,
 } from '../data/quizData'
+import { maskWhatsapp } from '../utils/masks'
 
 export function provideQuiz() {
   const quiz = createQuiz()
@@ -34,7 +39,9 @@ function createQuiz() {
   const router = useRouter()
   const route = useRoute()
 
-  const orderId = ref('FS-' + Math.random().toString(36).substr(2, 8).toUpperCase())
+  const orderId = ref(getSavedOrderId() || 'FS-' + Math.random().toString(36).substr(2, 8).toUpperCase())
+  setPersistOrderId(orderId.value)
+  persistQuizNow()
   const audioPlaying = ref(false)
   const audioProgress = ref(0)
   const audioLocked = ref(true)
@@ -188,6 +195,7 @@ function createQuiz() {
   function resetQuiz() {
     resetQuizState()
     orderId.value = 'FS-' + Math.random().toString(36).substr(2, 8).toUpperCase()
+    setPersistOrderId(orderId.value)
     audioPlaying.value = false
     audioProgress.value = 0
     audioLocked.value = true
@@ -240,6 +248,16 @@ function createQuiz() {
     payment.cardCvv = e.target.value.replace(/\D/g, '').slice(0, 4)
     e.target.value = payment.cardCvv
   }
+
+  function onWhatsappInput(e) {
+    form.whatsapp = maskWhatsapp(e.target.value)
+    e.target.value = form.whatsapp
+  }
+
+  watch(orderId, (id) => {
+    setPersistOrderId(id)
+    persistQuizNow()
+  })
 
   watch(
     () => route.meta.step,
@@ -296,5 +314,6 @@ function createQuiz() {
     onCardNumberInput,
     onExpiryInput,
     onCvvInput,
+    onWhatsappInput,
   }
 }
