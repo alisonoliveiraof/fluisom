@@ -97,13 +97,13 @@
   align-items: center;
 }
 .logo-img {
-  height: 42px;
+  height: 62px;
   width: auto;
   display: block;
   object-fit: contain;
 }
 .logo-sm .logo-img {
-  height: 34px;
+  height: 48px;
 }
 
 .progress-section { width: 100%; max-width: 280px; }

@@ -12,8 +12,8 @@ defineProps({
       :src="LOGO_URL"
       alt="Fluisom"
       class="logo-img"
-      width="160"
-      height="42"
+      width="240"
+      height="62"
     />
   </div>
 </template>
