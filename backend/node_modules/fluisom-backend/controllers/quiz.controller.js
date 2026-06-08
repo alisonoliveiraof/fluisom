@@ -10,6 +10,7 @@ import {
 } from '../services/supabase.service.js'
 import { getLyricsPreview } from '../utils/prompt.builder.js'
 import { orderStatusToProgress, orderStatusLabel } from '../utils/status.mapper.js'
+import { runInBackground } from '../utils/background.js'
 
 const activeGenerations = new Set()
 
@@ -41,9 +42,7 @@ export async function startQuiz(req, res, next) {
       status: order.status,
     })
 
-    runGenerationPipeline(order.id).catch((err) => {
-      console.error('[FLUISOM] Pipeline falhou:', order.id, err.message)
-    })
+    runInBackground(() => runGenerationPipeline(order.id))
   } catch (err) {
     next(err)
   }

@@ -1,0 +1,18 @@
+{
+  "buildCommand": "npm run build --prefix frontend",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "npm install && npm install --prefix frontend",
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 300,
+      "memory": 1024
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/poll-stale",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

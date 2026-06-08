@@ -14,6 +14,7 @@ import {
 } from '../services/supabase.service.js'
 import { retryMusicGeneration } from './music.controller.js'
 import { runGenerationPipeline } from './quiz.controller.js'
+import { runInBackground } from '../utils/background.js'
 import { formatDatePt } from '../utils/date.formatter.js'
 
 export function login(req, res) {
@@ -71,12 +72,12 @@ export async function retryOrder(req, res, next) {
 
     if (order.status === 'failed' && order.generated_lyrics) {
       await updateOrder(order.id, { status: 'lyrics_ready', error_message: null })
-      retryMusicGeneration(order.id).catch((err) => console.error('[FLUISOM] Retry music:', err.message))
+      runInBackground(() => retryMusicGeneration(order.id))
     } else if (order.status === 'failed' || !order.generated_lyrics) {
       await updateOrder(order.id, { status: 'pending', error_message: null, retry_count: (order.retry_count || 0) + 1 })
-      runGenerationPipeline(order.id).catch((err) => console.error('[FLUISOM] Retry pipeline:', err.message))
+      runInBackground(() => runGenerationPipeline(order.id))
     } else {
-      runGenerationPipeline(order.id).catch((err) => console.error('[FLUISOM] Retry pipeline:', err.message))
+      runInBackground(() => runGenerationPipeline(order.id))
     }
 
     res.json({ message: 'Retentativa iniciada', orderId: order.id })

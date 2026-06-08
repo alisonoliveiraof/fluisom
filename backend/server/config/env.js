@@ -3,17 +3,43 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-dotenv.config({ path: join(__dirname, '../../.env') })
+
+if (process.env.VERCEL !== '1') {
+  dotenv.config({ path: join(__dirname, '../../.env') })
+}
+
+function resolveBackendUrl() {
+  if (process.env.BACKEND_URL) return process.env.BACKEND_URL.replace(/\/$/, '')
+
+  if (process.env.VERCEL === '1') {
+    const host = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL
+    if (host) return `https://${host.replace(/^https?:\/\//, '')}`
+  }
+
+  return 'http://localhost:3001'
+}
+
+function resolveFrontendUrls() {
+  const defaults = 'http://localhost:5173,https://fluisom.vercel.app'
+  const raw = process.env.FRONTEND_URL || defaults
+  const urls = raw.split(',').map((url) => url.trim()).filter(Boolean)
+
+  if (process.env.VERCEL === '1' && process.env.VERCEL_URL) {
+    const vercelOrigin = `https://${process.env.VERCEL_URL.replace(/^https?:\/\//, '')}`
+    if (!urls.includes(vercelOrigin)) urls.push(vercelOrigin)
+  }
+
+  return urls
+}
+
+const frontendUrls = resolveFrontendUrls()
 
 export const env = {
   port: Number(process.env.PORT) || 3001,
   nodeEnv: process.env.NODE_ENV || 'development',
-  frontendUrls: (process.env.FRONTEND_URL || 'http://localhost:5173,https://fluisom.vercel.app')
-    .split(',')
-    .map((url) => url.trim())
-    .filter(Boolean),
-  frontendUrl: (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim(),
-  backendUrl: process.env.BACKEND_URL || 'http://localhost:3001',
+  frontendUrls,
+  frontendUrl: frontendUrls[0],
+  backendUrl: resolveBackendUrl(),
 
   openaiApiKey: process.env.OPENAI_API_KEY,
   openaiModel: process.env.OPENAI_MODEL || 'gpt-4o',

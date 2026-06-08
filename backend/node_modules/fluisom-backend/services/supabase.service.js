@@ -178,6 +178,23 @@ export async function setAdminSetting(key, value) {
   if (error) throw new Error(error.message)
 }
 
+export async function getStaleMusicOrders(limit = 10) {
+  const supabase = getSupabase()
+  const staleBefore = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+
+  const { data, error } = await supabase
+    .from('quiz_orders')
+    .select('*')
+    .eq('status', 'generating_music')
+    .not('suno_task_id', 'is', null)
+    .lt('updated_at', staleBefore)
+    .order('updated_at', { ascending: true })
+    .limit(limit)
+
+  if (error) throw new Error(`Erro ao buscar pedidos pendentes: ${error.message}`)
+  return data || []
+}
+
 export async function countTodayGenerations() {
   const supabase = getSupabase()
   const today = new Date()

@@ -1,6 +1,8 @@
 import { Router } from 'express'
 import getSupabase from '../config/supabase.config.js'
-import { updateOrder, insertGenerationLog } from '../services/supabase.service.js'
+import { getOrderById, updateOrder, insertGenerationLog } from '../services/supabase.service.js'
+import { finalizeMusicFromWebhookClips } from '../controllers/music.controller.js'
+import { buildMusicTitle, getGenreStyle } from '../utils/prompt.builder.js'
 
 const router = Router()
 
@@ -10,28 +12,39 @@ router.post('/suno', async (req, res) => {
     console.log('[FLUISOM] Webhook Suno recebido:', code, msg)
 
     const taskId = data?.task_id || data?.taskId
-    if (taskId) {
-      const supabase = getSupabase()
-      const { data: orders } = await supabase.from('quiz_orders').select('id').eq('suno_task_id', taskId).limit(1)
+    if (!taskId) {
+      return res.status(200).json({ status: 'received' })
+    }
 
-      if (orders?.[0]) {
-        await insertGenerationLog({
-          order_id: orders[0].id,
-          step: 'webhook',
-          status: code === 200 ? 'success' : 'error',
-          message: msg,
-          payload: req.body,
+    const supabase = getSupabase()
+    const { data: orders } = await supabase.from('quiz_orders').select('id').eq('suno_task_id', taskId).limit(1)
+    const orderId = orders?.[0]?.id
+
+    if (!orderId) {
+      return res.status(200).json({ status: 'received' })
+    }
+
+    await insertGenerationLog({
+      order_id: orderId,
+      step: 'webhook',
+      status: code === 200 ? 'success' : 'error',
+      message: msg,
+      payload: req.body,
+    })
+
+    if (data?.callbackType === 'complete' && Array.isArray(data?.data) && data.data.length) {
+      const order = await getOrderById(orderId)
+      if (order.status !== 'music_ready') {
+        await finalizeMusicFromWebhookClips(orderId, data.data, {
+          title: order.music_title || buildMusicTitle(order),
+          style: order.music_tags || getGenreStyle(order.genre),
         })
-
-        if (data?.callbackType === 'complete' && Array.isArray(data?.data)) {
-          const clip = data.data[0]
-          await updateOrder(orders[0].id, {
-            suno_raw_response: req.body,
-            suno_status: 'SUCCESS',
-            suno_clip_id: clip?.id,
-          })
-        }
       }
+    } else if (data?.status) {
+      await updateOrder(orderId, {
+        suno_status: data.status,
+        suno_raw_response: req.body,
+      })
     }
 
     res.status(200).json({ status: 'received' })
