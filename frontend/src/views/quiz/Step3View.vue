@@ -1,7 +1,7 @@
 <script setup>
 import { useQuiz } from '../../composables/useQuiz'
 
-const { form, genres, canProceed, goNext, goBack } = useQuiz()
+const { form, genres, canProceed, goNext, goBack, generationLoading } = useQuiz()
 </script>
 
 <template>
@@ -50,8 +50,8 @@ const { form, genres, canProceed, goNext, goBack } = useQuiz()
 
     <nav class="nav">
       <button type="button" class="btn-back" @click="goBack">← Voltar</button>
-      <button type="button" class="btn-next" :disabled="!canProceed(3)" @click="goNext">
-        Próximo
+      <button type="button" class="btn-next" :disabled="!canProceed(3) || generationLoading" @click="goNext">
+        {{ generationLoading ? 'Iniciando...' : 'Próximo' }}
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
       </button>
     </nav>

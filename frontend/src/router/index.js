@@ -6,6 +6,11 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
+      path: '/admin',
+      name: 'admin',
+      component: () => import('../views/AdminPanel.vue'),
+    },
+    {
       path: '/pv',
       name: 'sales',
       component: () => import('../pv/SalesPage.vue'),

@@ -1,0 +1,13 @@
+{
+  "name": "fluisom-backend-workspace",
+  "private": true,
+  "workspaces": [
+    "server"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=fluisom-backend",
+    "start": "npm run start --workspace=fluisom-backend",
+    "stop": "npm run stop --workspace=fluisom-backend",
+    "setup:supabase": "npm run setup:supabase --workspace=fluisom-backend"
+  }
+}

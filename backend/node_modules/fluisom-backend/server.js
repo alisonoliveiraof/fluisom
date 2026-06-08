@@ -1,0 +1,52 @@
+import express from 'express'
+import cors from 'cors'
+import helmet from 'helmet'
+import rateLimit from 'express-rate-limit'
+import { assertEnv, env } from './config/env.js'
+import quizRoutes from './routes/quiz.routes.js'
+import adminRoutes from './routes/admin.routes.js'
+import webhookRoutes from './routes/webhook.routes.js'
+import { errorMiddleware, notFoundMiddleware } from './middleware/error.middleware.js'
+
+assertEnv()
+
+const app = express()
+
+app.use(helmet())
+app.use(cors({
+  origin: env.frontendUrl,
+  credentials: true,
+}))
+app.use(express.json({ limit: '2mb' }))
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, service: 'fluisom-backend' })
+})
+
+const adminLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 100,
+  message: { error: true, message: 'Limite de requisições admin excedido.', code: 'RATE_LIMIT' },
+})
+
+app.use('/api/quiz', quizRoutes)
+app.use('/api/admin', adminLimiter, adminRoutes)
+app.use('/api/webhooks', webhookRoutes)
+
+app.use(notFoundMiddleware)
+app.use(errorMiddleware)
+
+const server = app.listen(env.port, () => {
+  console.log(`[FLUISOM] Servidor rodando em http://localhost:${env.port}`)
+})
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[FLUISOM] Porta ${env.port} já está em uso. Encerre o processo anterior ou altere PORT no .env`)
+    console.error(`[FLUISOM] Windows: Get-NetTCPConnection -LocalPort ${env.port} | Stop-Process -Id {OwningProcess} -Force`)
+    process.exit(1)
+  }
+  throw err
+})
+
+export default app

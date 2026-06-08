@@ -17,12 +17,36 @@ const {
   goToPayment,
   goBack,
   onWhatsappInput,
+  previewData,
+  previewAudioEl,
 } = useQuiz()
+
+function onPreviewEnded() {
+  audioPlaying.value = false
+}
 </script>
 
 <template>
   <section class="step">
     <div class="banner-celebrate">✨ Sua prévia exclusiva está pronta! Ouça antes de finalizar.</div>
+
+    <div v-if="previewData?.coverImageUrl" class="preview-cover-wrap">
+      <img :src="previewData.coverImageUrl" :alt="previewData.musicTitle || 'Capa da música'" class="preview-cover" />
+    </div>
+
+    <p v-if="previewData?.musicTitle" class="preview-title">{{ previewData.musicTitle }}</p>
+
+    <div v-if="previewData?.lyricsPreview" class="lyrics-preview">
+      <p v-for="(line, i) in previewData.lyricsPreview.split('\n')" :key="i">{{ line }}</p>
+    </div>
+
+    <audio
+      v-if="previewData?.previewAudioUrl"
+      ref="previewAudioEl"
+      :src="previewData.previewAudioUrl"
+      preload="metadata"
+      @ended="onPreviewEnded"
+    />
 
     <div class="audio-player">
       <div class="waveform">
@@ -37,7 +61,7 @@ const {
       <div class="audio-controls">
         <button type="button" class="play-btn" @click="toggleAudio">{{ audioPlaying ? '⏸' : '▶' }}</button>
         <div class="audio-info">
-          <span class="audio-name">Prévia — {{ honoredDisplay }}</span>
+          <span class="audio-name">Prévia — {{ previewData?.honoredName || honoredDisplay }}</span>
           <span class="audio-time">{{ audioTimeDisplay }}</span>
         </div>
       </div>
@@ -143,3 +167,42 @@ const {
     </nav>
   </section>
 </template>
+
+<style scoped>
+.preview-cover-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.preview-cover {
+  width: 140px;
+  height: 140px;
+  border-radius: 16px;
+  object-fit: cover;
+  box-shadow: 0 8px 24px rgba(0, 153, 184, 0.2);
+}
+
+.preview-title {
+  text-align: center;
+  font-weight: 700;
+  color: #0099b8;
+  margin-bottom: 12px;
+}
+
+.lyrics-preview {
+  background: #ffffff;
+  border: 1px solid #daeaf5;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  text-align: center;
+  color: #4a6a80;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.lyrics-preview p {
+  margin: 0 0 4px;
+}
+</style>

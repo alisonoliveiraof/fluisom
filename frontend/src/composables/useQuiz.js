@@ -1,5 +1,6 @@
 import { ref, computed, watch, onUnmounted, inject, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { startQuiz, getQuizStatus, getQuizPreview, updateQuizContact } from '../services/api.service'
 
 const QUIZ_KEY = Symbol('quiz')
 
@@ -50,12 +51,21 @@ function createQuiz() {
   const cardFlipped = ref(false)
   const showConfetti = ref(false)
 
+  const generationProgress = ref(0)
+  const generationStatus = ref('pending')
+  const generationStatusLabel = ref('Preparando sua história...')
+  const generationError = ref(null)
+  const generationLoading = ref(false)
+  const previewData = ref(null)
+  const previewAudioEl = ref(null)
+
   const waveHeights = Array.from({ length: 40 }, () => Math.floor(Math.random() * 40 + 8))
   const qrPattern = Array.from({ length: 64 }, () => Math.random() > 0.45)
   const videoWaveBars = Array.from({ length: 20 }, (_, i) => i)
 
   let audioInterval = null
   let videoInterval = null
+  let pollTimer = null
 
   const currentStep = computed(() => Number(route.meta.step) || 1)
 
@@ -120,7 +130,98 @@ function createQuiz() {
     }
   }
 
+  function clearPollTimer() {
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+  }
+
+  async function pollGenerationStatus() {
+    if (!orderId.value) return
+    try {
+      const status = await getQuizStatus(orderId.value)
+      generationProgress.value = Math.max(0, status.progress ?? 0)
+      generationStatus.value = status.status
+      generationStatusLabel.value = status.statusLabel || generationStatusLabel.value
+
+      if (status.status === 'music_ready' || status.status === 'preview_shown') {
+        clearPollTimer()
+        await loadPreview()
+      } else if (status.status === 'failed') {
+        clearPollTimer()
+        generationError.value = status.errorMessage || 'Erro na geração da música'
+      }
+    } catch (err) {
+      generationError.value = err.message
+    }
+  }
+
+  function startGenerationPolling() {
+    clearPollTimer()
+    pollGenerationStatus()
+    pollTimer = setInterval(pollGenerationStatus, 3000)
+  }
+
+  async function loadPreview() {
+    try {
+      const preview = await getQuizPreview(orderId.value)
+      previewData.value = preview
+      generationProgress.value = 100
+      generationStatusLabel.value = '✨ Sua música está pronta!'
+    } catch (err) {
+      generationError.value = err.message
+    }
+  }
+
+  async function startGeneration() {
+    if (!canProceed(3) || generationLoading.value) return
+    generationLoading.value = true
+    generationError.value = null
+    generationProgress.value = 0
+    generationStatus.value = 'pending'
+    generationStatusLabel.value = 'Preparando sua história...'
+
+    try {
+      const result = await startQuiz(form)
+      orderId.value = result.orderId
+      setPersistOrderId(result.orderId)
+      persistQuizNow()
+      generationStatus.value = result.status
+      goToStep(4)
+      startGenerationPolling()
+    } catch (err) {
+      generationError.value = err.message || 'Não foi possível iniciar a geração'
+    } finally {
+      generationLoading.value = false
+    }
+  }
+
+  function syncAudioProgress() {
+    const el = previewAudioEl.value
+    if (!el || !el.duration) return
+    audioProgress.value = (el.currentTime / el.duration) * 100
+  }
+
   function toggleAudio() {
+    const el = previewAudioEl.value
+    if (el && previewData.value?.previewAudioUrl) {
+      if (audioLocked.value) {
+        audioLocked.value = false
+      }
+      if (audioPlaying.value) {
+        el.pause()
+        audioPlaying.value = false
+        clearAudioInterval()
+        return
+      }
+      el.play()
+      audioPlaying.value = true
+      clearAudioInterval()
+      audioInterval = setInterval(syncAudioProgress, 200)
+      return
+    }
+
     if (audioLocked.value) {
       audioLocked.value = false
       audioPlaying.value = true
@@ -176,6 +277,10 @@ function createQuiz() {
 
   function goNext() {
     if (!canProceed(currentStep.value)) return
+    if (currentStep.value === 3) {
+      startGeneration()
+      return
+    }
     goToStep(currentStep.value + 1)
   }
 
@@ -183,8 +288,18 @@ function createQuiz() {
     if (currentStep.value > 1) goToStep(currentStep.value - 1)
   }
 
-  function goToPayment() {
+  async function goToPayment() {
     if (!canProceed(5)) return
+    try {
+      await updateQuizContact(orderId.value, {
+        fullName: form.fullName,
+        email: form.email,
+        whatsapp: form.whatsapp,
+        discreteMode: form.discreteMode,
+      })
+    } catch (err) {
+      console.error('[FLUISOM] Erro ao salvar contato:', err.message)
+    }
     goToStep(6)
   }
 
@@ -203,8 +318,15 @@ function createQuiz() {
     videoProgress.value = 0
     cardFlipped.value = false
     showConfetti.value = false
+    generationProgress.value = 0
+    generationStatus.value = 'pending'
+    generationStatusLabel.value = 'Preparando sua história...'
+    generationError.value = null
+    generationLoading.value = false
+    previewData.value = null
     clearAudioInterval()
     clearVideoInterval()
+    clearPollTimer()
     goToStep(1)
   }
 
@@ -263,6 +385,12 @@ function createQuiz() {
     () => route.meta.step,
     (step) => {
       window.scrollTo({ top: 0, behavior: 'smooth' })
+      if (step === 4 && orderId.value && !pollTimer) {
+        startGenerationPolling()
+      }
+      if (step === 5 && !previewData.value && orderId.value) {
+        loadPreview()
+      }
       if (step === 7) showConfetti.value = true
     },
   )
@@ -270,6 +398,7 @@ function createQuiz() {
   onUnmounted(() => {
     clearAudioInterval()
     clearVideoInterval()
+    clearPollTimer()
   })
 
   return {
@@ -315,5 +444,14 @@ function createQuiz() {
     onExpiryInput,
     onCvvInput,
     onWhatsappInput,
+    generationProgress,
+    generationStatus,
+    generationStatusLabel,
+    generationError,
+    generationLoading,
+    previewData,
+    previewAudioEl,
+    startGeneration,
+    loadPreview,
   }
 }
