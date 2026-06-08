@@ -2,13 +2,19 @@ import { cpSync, existsSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const root = dirname(fileURLToPath(import.meta.url))
-const frontendDir = join(root, '..')
-const source = join(frontendDir, '..', 'backend', 'server')
+const scriptDir = dirname(fileURLToPath(import.meta.url))
+const frontendDir = join(scriptDir, '..')
+
+const candidates = [
+  join(frontendDir, '..', 'backend', 'server'),
+  join(frontendDir, 'server'),
+]
+
+const source = candidates.find((path) => existsSync(path))
 const target = join(frontendDir, 'server')
 
-if (!existsSync(source)) {
-  console.error('[FLUISOM] backend/server não encontrado:', source)
+if (!source) {
+  console.error('[FLUISOM] backend/server não encontrado. Tentou:', candidates.join(', '))
   process.exit(1)
 }
 
@@ -17,4 +23,4 @@ if (existsSync(target)) {
 }
 
 cpSync(source, target, { recursive: true })
-console.log('[FLUISOM] server copiado para frontend/server')
+console.log('[FLUISOM] server copiado de', source, 'para', target)

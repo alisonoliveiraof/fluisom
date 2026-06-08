@@ -1,2 +1,19 @@
-# Arquivo com chaves para colar na Vercel — não versionar
+# Secrets
 vercel.env
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build / cópia Vercel
+frontend/dist/
+frontend/server/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
