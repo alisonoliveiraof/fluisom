@@ -5,14 +5,18 @@
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
   "functions": {
     "api/index.js": {
-      "maxDuration": 300,
+      "maxDuration": 60,
       "memory": 1024
     }
   },
   "crons": [
     {
-      "path": "/api/cron/poll-stale",
-      "schedule": "*/5 * * * *"
+      "path": "/api/cron/process-queue",
+      "schedule": "*/3 * * * *"
+    },
+    {
+      "path": "/api/cron/process-pending",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

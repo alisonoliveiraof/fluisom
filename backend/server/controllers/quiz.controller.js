@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { generateLyricsForOrder } from './lyrics.controller.js'
-import { generateMusicForOrder, retryMusicGeneration } from './music.controller.js'
+import { generateMusicForOrder } from './music.controller.js'
 import {
   createOrder,
   getOrderById,
@@ -10,9 +10,6 @@ import {
 } from '../services/supabase.service.js'
 import { getLyricsPreview } from '../utils/prompt.builder.js'
 import { orderStatusToProgress, orderStatusLabel } from '../utils/status.mapper.js'
-import { runInBackground } from '../utils/background.js'
-
-const activeGenerations = new Set()
 
 export async function startQuiz(req, res, next) {
   try {
@@ -41,8 +38,101 @@ export async function startQuiz(req, res, next) {
       sessionId,
       status: order.status,
     })
+  } catch (err) {
+    next(err)
+  }
+}
 
-    runInBackground(() => runGenerationPipeline(order.id))
+export async function generateLyricsStep(req, res, next) {
+  try {
+    const order = await getOrderById(req.params.orderId)
+
+    if (['lyrics_ready', 'generating_music', 'music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered'].includes(order.status)) {
+      return res.json({
+        orderId: order.id,
+        status: order.status,
+        progress: orderStatusToProgress(order.status, order.suno_status),
+        statusLabel: orderStatusLabel(order.status),
+        skipped: true,
+      })
+    }
+
+    if (order.status === 'failed' && order.generated_lyrics) {
+      await updateOrder(order.id, { status: 'lyrics_ready', error_message: null })
+      const updated = await getOrderById(order.id)
+      return res.json({
+        orderId: updated.id,
+        status: updated.status,
+        progress: orderStatusToProgress(updated.status),
+        statusLabel: orderStatusLabel(updated.status),
+      })
+    }
+
+    if (order.status === 'generating_lyrics') {
+      return res.status(409).json({
+        error: true,
+        message: 'Letra já está sendo gerada',
+        code: 'LYRICS_IN_PROGRESS',
+        orderId: order.id,
+        status: order.status,
+      })
+    }
+
+    const updated = await generateLyricsForOrder(order.id)
+    res.json({
+      orderId: updated.id,
+      status: updated.status,
+      progress: orderStatusToProgress(updated.status),
+      statusLabel: orderStatusLabel(updated.status),
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function submitMusicStep(req, res, next) {
+  try {
+    const order = await getOrderById(req.params.orderId)
+
+    if (['music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered'].includes(order.status)) {
+      return res.json({
+        orderId: order.id,
+        status: order.status,
+        progress: orderStatusToProgress(order.status, order.suno_status),
+        statusLabel: orderStatusLabel(order.status),
+        skipped: true,
+      })
+    }
+
+    if (order.status === 'generating_music' && order.suno_task_id) {
+      return res.json({
+        orderId: order.id,
+        status: order.status,
+        progress: orderStatusToProgress(order.status, order.suno_status),
+        statusLabel: orderStatusLabel(order.status),
+        skipped: true,
+      })
+    }
+
+    if (!order.generated_lyrics) {
+      return res.status(400).json({
+        error: true,
+        message: 'Gere a letra antes de enviar a música',
+        code: 'LYRICS_REQUIRED',
+      })
+    }
+
+    if (order.status !== 'lyrics_ready') {
+      await updateOrder(order.id, { status: 'lyrics_ready', error_message: null })
+    }
+
+    const updated = await generateMusicForOrder(order.id)
+    res.json({
+      orderId: updated.id,
+      status: updated.status,
+      progress: orderStatusToProgress(updated.status, updated.suno_status),
+      statusLabel: orderStatusLabel(updated.status),
+    })
   } catch (err) {
     next(err)
   }
@@ -116,18 +206,6 @@ export async function updateContact(req, res, next) {
   }
 }
 
-async function runGenerationPipeline(orderId) {
-  if (activeGenerations.has(orderId)) return
-  activeGenerations.add(orderId)
-
-  try {
-    await generateLyricsForOrder(orderId)
-    await generateMusicForOrder(orderId)
-  } finally {
-    activeGenerations.delete(orderId)
-  }
-}
-
 function mapQuizBodyToOrder(body, req) {
   return {
     relationship: body.relationship,
@@ -142,5 +220,3 @@ function mapQuizBodyToOrder(body, req) {
     user_agent: req.get('user-agent'),
   }
 }
-
-export { runGenerationPipeline, retryMusicGeneration }

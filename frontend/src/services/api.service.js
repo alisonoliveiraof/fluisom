@@ -35,6 +35,14 @@ export function startQuiz(formData) {
   })
 }
 
+export function generateQuizLyrics(orderId) {
+  return request(`/quiz/${orderId}/lyrics`, { method: 'POST' })
+}
+
+export function submitQuizMusic(orderId) {
+  return request(`/quiz/${orderId}/music`, { method: 'POST' })
+}
+
 export function getQuizStatus(orderId) {
   return request(`/quiz/status/${orderId}`)
 }

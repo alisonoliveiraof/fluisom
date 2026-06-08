@@ -1,6 +1,13 @@
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
-import { startQuiz, getQuizStatus, getQuizPreview, updateContact } from '../controllers/quiz.controller.js'
+import {
+  startQuiz,
+  generateLyricsStep,
+  submitMusicStep,
+  getQuizStatus,
+  getQuizPreview,
+  updateContact,
+} from '../controllers/quiz.controller.js'
 import { validateQuizStart, validateContactUpdate } from '../middleware/validate.middleware.js'
 
 const router = Router()
@@ -11,6 +18,12 @@ const startLimiter = rateLimit({
   message: { error: true, message: 'Muitas tentativas de início. Tente novamente em 1 hora.', code: 'RATE_LIMIT' },
 })
 
+const lyricsLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 15,
+  message: { error: true, message: 'Muitas gerações de letra. Tente novamente em 1 hora.', code: 'RATE_LIMIT' },
+})
+
 const pollLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 120,
@@ -18,6 +31,8 @@ const pollLimiter = rateLimit({
 })
 
 router.post('/start', startLimiter, validateQuizStart, startQuiz)
+router.post('/:orderId/lyrics', lyricsLimiter, generateLyricsStep)
+router.post('/:orderId/music', startLimiter, submitMusicStep)
 router.get('/status/:orderId', pollLimiter, getQuizStatus)
 router.get('/preview/:orderId', pollLimiter, getQuizPreview)
 router.patch('/:orderId/contact', pollLimiter, validateContactUpdate, updateContact)

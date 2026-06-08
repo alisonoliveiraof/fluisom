@@ -12,9 +12,8 @@ import {
   getAdminSetting,
   setAdminSetting,
 } from '../services/supabase.service.js'
-import { retryMusicGeneration } from './music.controller.js'
-import { runGenerationPipeline } from './quiz.controller.js'
-import { runInBackground } from '../utils/background.js'
+import { generateLyricsForOrder } from './lyrics.controller.js'
+import { generateMusicForOrder, retryMusicGeneration } from './music.controller.js'
 import { formatDatePt } from '../utils/date.formatter.js'
 
 export function login(req, res) {
@@ -72,15 +71,16 @@ export async function retryOrder(req, res, next) {
 
     if (order.status === 'failed' && order.generated_lyrics) {
       await updateOrder(order.id, { status: 'lyrics_ready', error_message: null })
-      runInBackground(() => retryMusicGeneration(order.id))
-    } else if (order.status === 'failed' || !order.generated_lyrics) {
+      await retryMusicGeneration(order.id)
+    } else if (!order.generated_lyrics) {
       await updateOrder(order.id, { status: 'pending', error_message: null, retry_count: (order.retry_count || 0) + 1 })
-      runInBackground(() => runGenerationPipeline(order.id))
+      await generateLyricsForOrder(order.id)
+      await generateMusicForOrder(order.id)
     } else {
-      runInBackground(() => runGenerationPipeline(order.id))
+      await generateMusicForOrder(order.id)
     }
 
-    res.json({ message: 'Retentativa iniciada', orderId: order.id })
+    res.json({ message: 'Retentativa concluída', orderId: order.id })
   } catch (err) {
     next(err)
   }

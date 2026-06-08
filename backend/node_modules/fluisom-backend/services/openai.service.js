@@ -9,7 +9,7 @@ export async function generateLyrics(prompt) {
   console.log('[FLUISOM] Iniciando geração de letra via OpenAI Responses API')
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 30000)
+  const timeout = setTimeout(() => controller.abort(), env.openaiTimeoutMs)
 
   try {
     const response = await fetch('https://api.openai.com/v1/responses', {

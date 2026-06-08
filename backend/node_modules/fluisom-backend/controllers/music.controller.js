@@ -13,7 +13,7 @@ import { uploadAudioFromUrl, uploadCoverFromUrl } from '../services/storage.serv
 import { buildMusicTitle, getGenreStyle } from '../utils/prompt.builder.js'
 import { getOrderById, updateOrder, insertGenerationLog } from '../services/supabase.service.js'
 import { env } from '../config/env.js'
-import { isServerless } from '../utils/background.js'
+const isServerless = () => process.env.VERCEL === '1'
 
 export async function finalizeMusicFromDetails(orderId, details, { title, style } = {}) {
   const order = await getOrderById(orderId)

@@ -1,6 +1,13 @@
 import { ref, computed, watch, onUnmounted, inject, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { startQuiz, getQuizStatus, getQuizPreview, updateQuizContact } from '../services/api.service'
+import {
+  startQuiz,
+  generateQuizLyrics,
+  submitQuizMusic,
+  getQuizStatus,
+  getQuizPreview,
+  updateQuizContact,
+} from '../services/api.service'
 
 const QUIZ_KEY = Symbol('quiz')
 
@@ -163,6 +170,53 @@ function createQuiz() {
     pollTimer = setInterval(pollGenerationStatus, 3000)
   }
 
+  async function resumeGenerationIfNeeded() {
+    if (!orderId.value || generationLoading.value) return
+
+    try {
+      const status = await getQuizStatus(orderId.value)
+      generationStatus.value = status.status
+      generationProgress.value = status.progress ?? generationProgress.value
+      generationStatusLabel.value = status.statusLabel || generationStatusLabel.value
+
+      if (status.status === 'failed') {
+        generationError.value = status.errorMessage || 'Erro na geração'
+        return
+      }
+
+      if (['music_ready', 'preview_shown'].includes(status.status)) {
+        clearPollTimer()
+        await loadPreview()
+        return
+      }
+
+      if (status.status === 'lyrics_ready') {
+        generationStatusLabel.value = '🎧 Enviando para produção musical...'
+        await submitQuizMusic(orderId.value)
+        startGenerationPolling()
+        return
+      }
+
+      if (['generating_music', 'generating_lyrics'].includes(status.status)) {
+        startGenerationPolling()
+        return
+      }
+
+      if (status.status === 'pending') {
+        generationLoading.value = true
+        generationStatusLabel.value = '✍️ Compondo a letra da sua música...'
+        await generateQuizLyrics(orderId.value)
+        generationStatusLabel.value = '🎧 Enviando para produção musical...'
+        await submitQuizMusic(orderId.value)
+        startGenerationPolling()
+      }
+    } catch (err) {
+      generationError.value = err.message
+    } finally {
+      generationLoading.value = false
+    }
+  }
+
   async function loadPreview() {
     try {
       const preview = await getQuizPreview(orderId.value)
@@ -188,7 +242,21 @@ function createQuiz() {
       setPersistOrderId(result.orderId)
       persistQuizNow()
       generationStatus.value = result.status
+      generationProgress.value = 5
       goToStep(4)
+
+      generationStatusLabel.value = '✍️ Compondo a letra da sua música...'
+      const lyrics = await generateQuizLyrics(orderId.value)
+      generationStatus.value = lyrics.status
+      generationProgress.value = lyrics.progress ?? 35
+      generationStatusLabel.value = lyrics.statusLabel || generationStatusLabel.value
+
+      generationStatusLabel.value = '🎧 Enviando para produção musical...'
+      const music = await submitQuizMusic(orderId.value)
+      generationStatus.value = music.status
+      generationProgress.value = music.progress ?? 45
+      generationStatusLabel.value = music.statusLabel || '🎧 Produzindo sua música...'
+
       startGenerationPolling()
     } catch (err) {
       generationError.value = err.message || 'Não foi possível iniciar a geração'
@@ -385,8 +453,8 @@ function createQuiz() {
     () => route.meta.step,
     (step) => {
       window.scrollTo({ top: 0, behavior: 'smooth' })
-      if (step === 4 && orderId.value && !pollTimer) {
-        startGenerationPolling()
+      if (step === 4 && orderId.value && !pollTimer && !generationLoading.value) {
+        resumeGenerationIfNeeded()
       }
       if (step === 5 && !previewData.value && orderId.value) {
         loadPreview()
