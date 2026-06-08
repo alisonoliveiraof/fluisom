@@ -12,6 +12,15 @@ assertEnv()
 
 const app = express()
 
+if (process.env.VERCEL === '1') {
+  app.use((req, _res, next) => {
+    if (!req.url.startsWith('/api')) {
+      req.url = `/api${req.url}`
+    }
+    next()
+  })
+}
+
 app.use(helmet())
 app.use(cors({
   origin(origin, callback) {
