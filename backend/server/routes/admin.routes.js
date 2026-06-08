@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import rateLimit from 'express-rate-limit'
 import {
   login,
   dashboard,
@@ -16,7 +17,13 @@ import { authMiddleware } from '../middleware/auth.middleware.js'
 
 const router = Router()
 
-router.post('/login', login)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: true, message: 'Muitas tentativas de login. Aguarde 15 minutos.', code: 'RATE_LIMIT' },
+})
+
+router.post('/login', loginLimiter, login)
 
 router.use(authMiddleware)
 

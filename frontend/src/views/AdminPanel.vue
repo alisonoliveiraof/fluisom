@@ -7,7 +7,6 @@ import {
   getAdminOrderDetail,
   retryAdminOrder,
   updateAdminOrderStatus,
-  getAdminRealtimeStats,
   getAdminSettings,
   updateAdminSettings,
   exportAdminOrders,
@@ -43,7 +42,6 @@ const selectedLogs = ref([])
 const detailOpen = ref(false)
 
 const settings = ref({ generationEnabled: true, maxDailyGenerations: 100, priceBrl: 47.9, envKeys: [] })
-const realtimeCounts = ref({})
 const chartData = ref([])
 
 let refreshTimer = null
@@ -91,8 +89,6 @@ async function loadDashboard() {
     stats.value = data.stats
     chartData.value = data.ordersChart || []
     recentOrders.value = data.recentOrders || []
-    const rt = await getAdminRealtimeStats()
-    realtimeCounts.value = rt.counts || {}
   } catch (err) {
     if (err.status === 401) logout()
   } finally {
@@ -219,7 +215,7 @@ function startAutoRefresh() {
   refreshTimer = setInterval(() => {
     if (section.value === 'dashboard') loadDashboard()
     if (section.value === 'orders') loadOrders(ordersPage.value)
-  }, 10000)
+  }, 30000)
 }
 
 function stopAutoRefresh() {

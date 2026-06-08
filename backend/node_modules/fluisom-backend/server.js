@@ -1,7 +1,6 @@
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
-import rateLimit from 'express-rate-limit'
 import { assertEnv, env } from './config/env.js'
 import quizRoutes from './routes/quiz.routes.js'
 import adminRoutes from './routes/admin.routes.js'
@@ -23,14 +22,8 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'fluisom-backend' })
 })
 
-const adminLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 100,
-  message: { error: true, message: 'Limite de requisições admin excedido.', code: 'RATE_LIMIT' },
-})
-
 app.use('/api/quiz', quizRoutes)
-app.use('/api/admin', adminLimiter, adminRoutes)
+app.use('/api/admin', adminRoutes)
 app.use('/api/webhooks', webhookRoutes)
 
 app.use(notFoundMiddleware)
