@@ -42,10 +42,10 @@ export const env = {
   backendUrl: resolveBackendUrl(),
 
   openaiApiKey: process.env.OPENAI_API_KEY,
-  openaiModel: process.env.OPENAI_MODEL || (process.env.VERCEL === '1' ? 'gpt-4o-mini' : 'gpt-4o'),
-  openaiMaxTokens: Number(process.env.OPENAI_MAX_TOKENS) || (process.env.VERCEL === '1' ? 1200 : 2000),
-  openaiTimeoutMs: Number(process.env.OPENAI_TIMEOUT_MS) || (process.env.VERCEL === '1' ? 50000 : 30000),
-  maxGenerationRetries: Number(process.env.MAX_GENERATION_RETRIES) || (process.env.VERCEL === '1' ? 2 : 3),
+  openaiModel: process.env.OPENAI_MODEL || 'gpt-4o',
+  openaiMaxTokens: Number(process.env.OPENAI_MAX_TOKENS) || 2000,
+  openaiTimeoutMs: Number(process.env.OPENAI_TIMEOUT_MS) || (process.env.VERCEL === '1' ? 55000 : 90000),
+  maxGenerationRetries: Number(process.env.MAX_GENERATION_RETRIES) || 3,
 
   sunoApiKey: process.env.SUNO_API_KEY,
   sunoBaseUrl: process.env.SUNO_BASE_URL || 'https://api.sunoapi.org',
