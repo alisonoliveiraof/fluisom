@@ -13,7 +13,14 @@ const app = express()
 
 app.use(helmet())
 app.use(cors({
-  origin: env.frontendUrl,
+  origin(origin, callback) {
+    if (!origin || env.frontendUrls.includes(origin)) {
+      callback(null, origin || env.frontendUrls[0])
+    } else {
+      console.warn('[FLUISOM] CORS bloqueado para origem:', origin)
+      callback(new Error(`Origem não permitida: ${origin}`))
+    }
+  },
   credentials: true,
 }))
 app.use(express.json({ limit: '2mb' }))

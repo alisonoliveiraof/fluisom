@@ -8,7 +8,11 @@ dotenv.config({ path: join(__dirname, '../../.env') })
 export const env = {
   port: Number(process.env.PORT) || 3001,
   nodeEnv: process.env.NODE_ENV || 'development',
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  frontendUrls: (process.env.FRONTEND_URL || 'http://localhost:5173,https://fluisom.vercel.app')
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean),
+  frontendUrl: (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim(),
   backendUrl: process.env.BACKEND_URL || 'http://localhost:3001',
 
   openaiApiKey: process.env.OPENAI_API_KEY,
