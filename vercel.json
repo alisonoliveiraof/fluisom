@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm install --prefix frontend && node frontend/scripts/prepare-vercel.mjs",
+  "installCommand": "npm install --prefix frontend --include=dev && node frontend/scripts/prepare-vercel.mjs",
   "buildCommand": "npm run build --prefix frontend",
   "outputDirectory": "frontend/dist",
   "rewrites": [
