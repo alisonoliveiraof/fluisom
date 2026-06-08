@@ -6,6 +6,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 if (process.env.VERCEL !== '1') {
   dotenv.config({ path: join(__dirname, '../../.env') })
+  dotenv.config({ path: join(__dirname, '../../../backend/.env') })
 }
 
 function resolveBackendUrl() {

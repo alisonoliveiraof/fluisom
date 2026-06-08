@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Cópia do backend gerada no build da Vercel
+server/
+
 # Variáveis de ambiente (definir no painel da Vercel)
 .env
 .env.local
