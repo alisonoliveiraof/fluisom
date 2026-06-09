@@ -9,24 +9,41 @@ if (process.env.VERCEL !== '1') {
   dotenv.config({ path: join(__dirname, '../../../backend/.env') })
 }
 
+function normalizeOrigin(url) {
+  if (!url) return ''
+  const trimmed = url.trim().replace(/\/$/, '')
+  try {
+    const parsed = new URL(trimmed)
+    return `${parsed.protocol}//${parsed.host}`
+  } catch {
+    return trimmed
+  }
+}
+
 function resolveBackendUrl() {
-  if (process.env.BACKEND_URL) return process.env.BACKEND_URL.replace(/\/$/, '')
+  if (process.env.BACKEND_URL) return normalizeOrigin(process.env.BACKEND_URL)
 
   if (process.env.VERCEL === '1') {
     const host = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL
-    if (host) return `https://${host.replace(/^https?:\/\//, '')}`
+    if (host) return normalizeOrigin(`https://${host.replace(/^https?:\/\//, '')}`)
   }
 
   return 'http://localhost:3001'
 }
 
 function resolveFrontendUrls() {
-  const defaults = 'http://localhost:5173,https://fluisom.vercel.app'
+  const defaults = [
+    'http://localhost:5173',
+    'http://localhost:4173',
+    'https://fluisom.vercel.app',
+    'https://fluisom.com',
+    'https://www.fluisom.com',
+  ].join(',')
   const raw = process.env.FRONTEND_URL || defaults
-  const urls = raw.split(',').map((url) => url.trim()).filter(Boolean)
+  const urls = [...new Set(raw.split(',').map(normalizeOrigin).filter(Boolean))]
 
   if (process.env.VERCEL === '1' && process.env.VERCEL_URL) {
-    const vercelOrigin = `https://${process.env.VERCEL_URL.replace(/^https?:\/\//, '')}`
+    const vercelOrigin = normalizeOrigin(`https://${process.env.VERCEL_URL.replace(/^https?:\/\//, '')}`)
     if (!urls.includes(vercelOrigin)) urls.push(vercelOrigin)
   }
 
