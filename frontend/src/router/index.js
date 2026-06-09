@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import QuizLayout from '../layouts/QuizLayout.vue'
 import { canProceed, maxReachableStep } from '../quiz/quizState'
+import { SITE_TITLE } from '../constants'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -39,6 +40,10 @@ const router = createRouter({
   scrollBehavior() {
     return { top: 0 }
   },
+})
+
+router.afterEach((to) => {
+  document.title = to.meta?.documentTitle || SITE_TITLE
 })
 
 router.beforeEach((to, from, next) => {
