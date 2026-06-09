@@ -235,6 +235,10 @@ export async function getQuizPreview(req, res, next) {
       musicTitle: order.music_title,
       genre: order.genre,
       voice: order.voice,
+      relationship: order.relationship,
+      customRelationship: order.custom_relationship,
+      fullName: order.full_name,
+      email: order.email,
       lyricsPreview: getLyricsPreview(order.generated_lyrics, 4),
       duration: 30,
     })

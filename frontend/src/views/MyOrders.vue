@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getMyOrders } from '../services/api.service'
 import { getSavedOrderId } from '../quiz/quizState'
@@ -14,6 +14,7 @@ const loading = ref(false)
 const error = ref('')
 const searched = ref(false)
 const playingId = ref(null)
+const audioEls = ref({})
 
 const STATUS_COLORS = {
   pending: '#8aaabb',
@@ -74,20 +75,52 @@ function formatDate(iso) {
 }
 
 function goPay(orderId) {
-  router.push({ path: '/passo/5', query: { orderId } })
+  router.push({ path: '/passo/6', query: { orderId } })
 }
 
 function goHome() {
   router.push('/pv')
 }
 
+function setAudioEl(orderId, el) {
+  if (el) audioEls.value[orderId] = el
+  else delete audioEls.value[orderId]
+}
+
+function pauseAllExcept(orderId) {
+  for (const [id, el] of Object.entries(audioEls.value)) {
+    if (id !== orderId && el) {
+      el.pause()
+      el.currentTime = 0
+    }
+  }
+}
+
 function togglePlay(order) {
-  if (playingId.value === order.orderId) {
+  const id = order.orderId
+  const el = audioEls.value[id]
+  if (!el) return
+
+  if (playingId.value === id) {
+    el.pause()
     playingId.value = null
     return
   }
-  playingId.value = order.orderId
+
+  pauseAllExcept(id)
+  playingId.value = id
+  el.play().catch(() => {
+    playingId.value = null
+  })
 }
+
+function onAudioEnded(orderId) {
+  if (playingId.value === orderId) playingId.value = null
+}
+
+onBeforeUnmount(() => {
+  Object.values(audioEls.value).forEach((el) => el?.pause())
+})
 </script>
 
 <template>
@@ -150,14 +183,19 @@ function togglePlay(order) {
 
           <div v-if="order.canPreview && order.previewAudioUrl" class="preview-block">
             <audio
-              v-if="playingId === order.orderId"
+              :ref="(el) => setAudioEl(order.orderId, el)"
               :src="order.previewAudioUrl"
-              controls
-              autoplay
-              class="audio-player"
+              preload="metadata"
+              class="sr-only-audio"
+              @ended="onAudioEnded(order.orderId)"
             />
-            <button v-else type="button" class="btn-play" @click="togglePlay(order)">
-              ▶ Ouvir prévia
+            <button
+              type="button"
+              class="btn-play"
+              :class="{ playing: playingId === order.orderId }"
+              @click="togglePlay(order)"
+            >
+              {{ playingId === order.orderId ? '⏸ Pausar prévia' : '▶ Ouvir prévia' }}
             </button>
           </div>
 
@@ -359,9 +397,12 @@ h1 {
 
 .preview-block { margin-bottom: 12px; }
 
-.audio-player {
-  width: 100%;
-  height: 40px;
+.sr-only-audio {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .btn-play {
@@ -373,6 +414,10 @@ h1 {
   padding: 12px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.btn-play.playing {
+  background: linear-gradient(135deg, #0066a8, #004d80);
 }
 
 .payment-alert,

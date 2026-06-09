@@ -131,7 +131,7 @@ function onPreviewEnded() {
         </span>
         <span>
           <span class="discrete-title">🎁 É um presente surpresa? (Modo Discreto)</span>
-          <span class="discrete-desc">Não enviaremos notificações que possam entregar a surpresa</span>
+          <span class="discrete-desc">Não enviaremos notificações que possam estragar a surpresa</span>
         </span>
       </label>
     </div>

@@ -221,12 +221,39 @@ function createQuiz() {
     }
   }
 
+  function hydrateFormFromOrder(preview) {
+    if (!preview) return
+    if (preview.honoredName) form.honoredName = preview.honoredName
+    if (preview.genre) form.genre = preview.genre
+    if (preview.voice) form.voice = preview.voice
+    if (preview.relationship) form.relationship = preview.relationship
+    if (preview.customRelationship) form.customRelationship = preview.customRelationship
+    if (preview.fullName) form.fullName = preview.fullName
+    if (preview.email) form.email = preview.email
+    persistQuizNow()
+  }
+
+  async function ensureContactSaved() {
+    if (!orderId.value || !form.email) return
+    try {
+      await updateQuizContact(orderId.value, {
+        fullName: form.fullName || form.honoredName || 'Cliente',
+        email: form.email,
+        whatsapp: form.whatsapp,
+        discreteMode: form.discreteMode,
+      })
+    } catch (err) {
+      console.error('[FLUISOM] Erro ao salvar contato:', err.message)
+    }
+  }
+
   async function loadPreview() {
     if (!orderId.value) return
     previewLoading.value = true
     try {
       const preview = await getQuizPreview(orderId.value)
       previewData.value = preview
+      hydrateFormFromOrder(preview)
       generationProgress.value = 100
       generationStatus.value = preview.status || 'preview_shown'
       generationStatusLabel.value = '✨ Sua música está pronta!'
@@ -352,7 +379,10 @@ function createQuiz() {
   }
 
   function goToStep(step) {
-    router.push({ name: `quiz-step-${step}` })
+    const query = {}
+    const id = route.query.orderId || orderId.value
+    if (id) query.orderId = String(id)
+    router.push({ name: `quiz-step-${step}`, query })
   }
 
   function goNext() {
@@ -469,21 +499,30 @@ function createQuiz() {
       setPersistOrderId(id)
       persistQuizNow()
       const savedEmail = sessionStorage.getItem('fluisom_orders_email')
-      if (savedEmail && !form.email) form.email = savedEmail
+      if (savedEmail && !form.email) {
+        form.email = savedEmail
+        persistQuizNow()
+      }
       await loadPreview()
+      if (Number(route.meta.step) === 6) {
+        await ensureContactSaved()
+      }
     },
     { immediate: true },
   )
 
   watch(
     () => route.meta.step,
-    (step) => {
+    async (step) => {
       window.scrollTo({ top: 0, behavior: 'smooth' })
       if (step === 4 && orderId.value && !pollTimer && !generationLoading.value) {
         resumeGenerationIfNeeded()
       }
-      if (step === 5 && !previewData.value && orderId.value) {
-        loadPreview()
+      if ((step === 5 || step === 6) && !previewData.value && orderId.value) {
+        await loadPreview()
+      }
+      if (step === 6 && route.query.orderId && form.email) {
+        await ensureContactSaved()
       }
       if (step === 7) showConfetti.value = true
     },

@@ -45,6 +45,11 @@ router.beforeEach((to, from, next) => {
   const targetStep = to.meta.step
   if (!targetStep) return next()
 
+  // Retorno via Meus Pedidos: pedido existente pode ir direto ao passo 5 ou 6
+  if (to.query.orderId && targetStep >= 5 && targetStep <= 6) {
+    return next()
+  }
+
   const fromStep = from.meta.step ?? 0
 
   if (fromStep && targetStep > fromStep + 1) {
