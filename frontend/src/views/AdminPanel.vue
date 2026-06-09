@@ -12,6 +12,7 @@ import {
   exportAdminOrders,
 } from '../services/api.service'
 import { LOGO_URL } from '../constants'
+import { downloadMusicFile } from '../utils/musicDownload'
 
 const ADMIN_LOGO_URL = LOGO_URL
 
@@ -36,6 +37,7 @@ const filterSearch = ref('')
 const loading = ref(false)
 const ordersError = ref('')
 const coverDownloading = ref(false)
+const musicDownloading = ref(false)
 
 const selectedOrder = ref(null)
 const selectedLogs = ref([])
@@ -115,6 +117,19 @@ async function loadOrders(page = 1) {
     if (err.status === 401) logout()
   } finally {
     loading.value = false
+  }
+}
+
+async function downloadMusic(order) {
+  const url = order?.full_audio_url || order?.fullAudioUrl || order?.preview_audio_url || order?.previewAudioUrl
+  if (!url) return
+
+  const honoredName = order?.honored_name || order?.honoredName
+  musicDownloading.value = true
+  try {
+    await downloadMusicFile({ url, honoredName })
+  } finally {
+    musicDownloading.value = false
   }
 }
 
@@ -308,6 +323,7 @@ onUnmounted(stopAutoRefresh)
 
           <div class="table-card">
             <h3>Pedidos recentes</h3>
+            <div class="table-wrap">
             <table>
               <thead>
                 <tr>
@@ -335,63 +351,69 @@ onUnmounted(stopAutoRefresh)
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
         </section>
 
-        <section v-if="section === 'orders'" class="section">
-          <p class="orders-hint">
-            Todos os pedidos iniciados no quiz aparecem aqui — o email só é preenchido no passo 5 (contato), antes do pagamento.
-          </p>
-          <div class="filters">
-            <select v-model="filterStatus">
-              <option value="">Todos os status</option>
-              <option v-for="(label, key) in statusLabels" :key="key" :value="key">{{ label }}</option>
-            </select>
-            <input v-model="filterSearch" type="search" placeholder="Buscar homenageado, nome ou email" @keyup.enter="loadOrders(1)" />
-            <button @click="loadOrders(1)">Filtrar</button>
-            <button @click="handleExport">Exportar CSV</button>
-          </div>
-
-          <p v-if="ordersError" class="orders-error">{{ ordersError }}</p>
-
-          <div class="table-card">
+        <section v-if="section === 'orders'" class="section section-orders">
+          <div class="orders-panel">
             <div class="table-head">
               <h3>Pedidos</h3>
               <span class="orders-count">{{ ordersTotal }} registro(s)</span>
             </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Homenageado</th>
-                  <th>Contato</th>
-                  <th>Status</th>
-                  <th>Pagamento</th>
-                  <th>Criado</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="!loading && orders.length === 0">
-                  <td colspan="7" class="empty-row">Nenhum pedido encontrado.</td>
-                </tr>
-                <tr v-for="o in orders" :key="o.id">
-                  <td class="mono">{{ o.id.slice(0, 8) }}…</td>
-                  <td><strong>{{ o.honored_name }}</strong></td>
-                  <td>
-                    <span v-if="o.email">{{ o.email }}</span>
-                    <span v-else class="muted">Sem email ainda</span>
-                  </td>
-                  <td><span :class="statusClass(o.status)">{{ statusLabels[o.status] || o.status }}</span></td>
-                  <td>{{ o.payment_status === 'paid' ? 'Pago' : 'Não pago' }}</td>
-                  <td>{{ formatDate(o.created_at) }}</td>
-                  <td class="actions">
-                    <button @click="openOrderDetail(o.id)">Ver</button>
-                    <button v-if="o.status === 'failed'" @click="handleRetry(o.id)">Retry</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+
+            <p class="orders-hint">
+              Todos os pedidos iniciados no quiz aparecem aqui — o email só é preenchido no passo 5 (contato), antes do pagamento.
+            </p>
+
+            <div class="filters">
+              <select v-model="filterStatus">
+                <option value="">Todos os status</option>
+                <option v-for="(label, key) in statusLabels" :key="key" :value="key">{{ label }}</option>
+              </select>
+              <input v-model="filterSearch" type="search" placeholder="Buscar homenageado, nome ou email" @keyup.enter="loadOrders(1)" />
+              <button class="btn-filter" @click="loadOrders(1)">Filtrar</button>
+              <button class="btn-filter btn-filter-outline" @click="handleExport">Exportar CSV</button>
+            </div>
+
+            <p v-if="ordersError" class="orders-error">{{ ordersError }}</p>
+
+            <div class="table-wrap">
+              <table class="orders-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Homenageado</th>
+                    <th>Contato</th>
+                    <th>Status</th>
+                    <th>Pagamento</th>
+                    <th>Criado</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="!loading && orders.length === 0">
+                    <td colspan="7" class="empty-row">Nenhum pedido encontrado.</td>
+                  </tr>
+                  <tr v-for="o in orders" :key="o.id">
+                    <td class="mono">{{ o.id.slice(0, 8) }}…</td>
+                    <td><strong>{{ o.honored_name }}</strong></td>
+                    <td>
+                      <span v-if="o.email">{{ o.email }}</span>
+                      <span v-else class="muted">Sem email ainda</span>
+                    </td>
+                    <td><span :class="statusClass(o.status)">{{ statusLabels[o.status] || o.status }}</span></td>
+                    <td>{{ o.payment_status === 'paid' ? 'Pago' : 'Não pago' }}</td>
+                    <td>{{ formatDate(o.created_at) }}</td>
+                    <td class="actions">
+                      <button @click="openOrderDetail(o.id)">Ver</button>
+                      <button v-if="o.status === 'failed'" @click="handleRetry(o.id)">Retry</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
             <div class="pagination">
               <button :disabled="ordersPage <= 1" @click="loadOrders(ordersPage - 1)">←</button>
               <span>{{ ordersPage }} / {{ ordersTotalPages }}</span>
@@ -449,7 +471,20 @@ onUnmounted(stopAutoRefresh)
 
           <section v-if="selectedOrder.preview_audio_url || selectedOrder.full_audio_url || selectedOrder.cover_image_url">
             <h4>Áudio e capa</h4>
-            <audio v-if="selectedOrder.preview_audio_url || selectedOrder.full_audio_url" :src="selectedOrder.preview_audio_url || selectedOrder.full_audio_url" controls />
+            <div v-if="selectedOrder.preview_audio_url || selectedOrder.full_audio_url" class="audio-block">
+              <audio :src="selectedOrder.full_audio_url || selectedOrder.preview_audio_url" controls />
+              <p v-if="selectedOrder.honored_name" class="download-filename">
+                📁 Especial para {{ selectedOrder.honored_name }}
+              </p>
+              <button
+                type="button"
+                class="btn-download-music"
+                :disabled="musicDownloading"
+                @click="downloadMusic(selectedOrder)"
+              >
+                {{ musicDownloading ? 'Baixando...' : '⬇ Baixar música' }}
+              </button>
+            </div>
             <div v-if="selectedOrder.cover_image_url" class="cover-block">
               <img :src="selectedOrder.cover_image_url" class="modal-cover" alt="Capa da música" />
               <button type="button" class="btn-download-cover" :disabled="coverDownloading" @click="downloadCover(selectedOrder)">
@@ -582,7 +617,19 @@ onUnmounted(stopAutoRefresh)
 .sidebar nav button.active { background: rgba(0, 153, 184, 0.12); color: #0099b8; }
 .btn-logout { color: #ef4444; margin-top: auto; }
 
-.main { flex: 1; padding: 20px; }
+.main {
+  flex: 1;
+  min-width: 0;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.section {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
 .topbar h2 { margin: 0; flex: 1; }
 .date { color: #8aaabb; font-size: 0.9rem; }
@@ -618,12 +665,46 @@ onUnmounted(stopAutoRefresh)
   50% { box-shadow: 0 0 0 8px rgba(255, 179, 71, 0); }
 }
 
-.chart-card, .table-card, .settings-card {
+.chart-card, .table-card, .settings-card, .orders-panel {
   background: #fff;
   border: 1px solid #daeaf5;
   border-radius: 16px;
   padding: 20px;
   margin-bottom: 20px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.orders-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #eef5fb;
+  border-radius: 12px;
+  background: #fafcff;
+}
+
+.table-wrap table {
+  margin: 0;
+  min-width: 720px;
+}
+
+.table-wrap th:first-child,
+.table-wrap td:first-child {
+  padding-left: 14px;
+}
+
+.table-wrap th:last-child,
+.table-wrap td:last-child {
+  padding-right: 14px;
 }
 
 .chart-bars {
@@ -695,14 +776,67 @@ th, td { padding: 10px 8px; border-bottom: 1px solid #eef5fb; text-align: left; 
 .badge-paid { background: #cffafe; color: #0e7490; }
 .badge-failed { background: #fee2e2; color: #b91c1c; }
 
-.filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
-.filters input, .filters select {
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 14px;
+  background: #f7f9ff;
+  border: 1px solid #eef5fb;
+  border-radius: 12px;
+}
+
+.filters input,
+.filters select {
+  flex: 1;
+  min-width: 140px;
   padding: 8px 12px;
   border: 1px solid #daeaf5;
   border-radius: 10px;
+  background: #fff;
+  box-sizing: border-box;
 }
 
-.pagination { display: flex; justify-content: center; align-items: center; gap: 12px; padding-top: 12px; }
+.btn-filter {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #00c9d4, #0066a8);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-filter-outline {
+  background: #fff;
+  color: #0099b8;
+  border: 1px solid #daeaf5;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding-top: 16px;
+  margin-top: 4px;
+  border-top: 1px solid #eef5fb;
+}
+
+.pagination button {
+  padding: 6px 14px;
+  border: 1px solid #daeaf5;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .settings label { display: block; margin-bottom: 12px; }
@@ -745,6 +879,41 @@ th, td { padding: 10px 8px; border-bottom: 1px solid #eef5fb; text-align: left; 
   padding: 10px;
   font-family: inherit;
 }
+.audio-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.audio-block audio {
+  width: 100%;
+}
+
+.download-filename {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #15803d;
+}
+
+.btn-download-music {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #22c55e, #00c9d4);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-download-music:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .cover-block {
   display: flex;
   flex-direction: column;
@@ -774,9 +943,14 @@ th, td { padding: 10px 8px; border-bottom: 1px solid #eef5fb; text-align: left; 
 .btn-download-cover:disabled { opacity: 0.6; cursor: wait; }
 
 .orders-hint {
-  margin: 0 0 12px;
-  color: #8aaabb;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  color: #4a6a80;
   font-size: 0.88rem;
+  line-height: 1.5;
+  background: #f0f8ff;
+  border: 1px solid #daeaf5;
+  border-radius: 10px;
 }
 
 .orders-error {
@@ -789,7 +963,9 @@ th, td { padding: 10px 8px; border-bottom: 1px solid #eef5fb; text-align: left; 
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eef5fb;
 }
 
 .table-head h3 { margin: 0; }
@@ -829,6 +1005,14 @@ th, td { padding: 10px 8px; border-bottom: 1px solid #eef5fb; text-align: left; 
 }
 
 @media (max-width: 768px) {
+  .main { padding: 12px; }
+  .orders-panel,
+  .table-card,
+  .chart-card { padding: 14px; }
+  .filters { flex-direction: column; }
+  .filters input,
+  .filters select { width: 100%; min-width: 0; }
+  .btn-filter { width: 100%; }
   .menu-btn { display: block; }
   .sidebar {
     position: fixed;

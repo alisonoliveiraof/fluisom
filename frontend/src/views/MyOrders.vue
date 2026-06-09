@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getMyOrders } from '../services/api.service'
 import { getSavedOrderId } from '../quiz/quizState'
+import { downloadMusicFile } from '../utils/musicDownload'
 import { LOGO_URL } from '../constants'
 
 const SESSION_KEY = 'fluisom_orders_session'
@@ -16,6 +17,7 @@ const orders = ref([])
 const loading = ref(false)
 const error = ref('')
 const playingId = ref(null)
+const downloadingId = ref(null)
 const audioEls = ref({})
 
 const isLoggedIn = computed(() => !!loggedEmail.value)
@@ -127,6 +129,18 @@ function goPay(orderId) {
 
 function goHome() {
   router.push('/pv')
+}
+
+async function downloadMusic(order) {
+  const url = order.fullAudioUrl
+  if (!url) return
+
+  downloadingId.value = order.orderId
+  try {
+    await downloadMusicFile({ url, honoredName: order.honoredName })
+  } finally {
+    downloadingId.value = null
+  }
 }
 
 function setAudioEl(orderId, el) {
@@ -288,7 +302,15 @@ onBeforeUnmount(() => {
 
             <div v-else-if="order.canDownload && order.fullAudioUrl" class="download-block">
               <p>✅ Pagamento confirmado! Baixe sua música completa:</p>
-              <a :href="order.fullAudioUrl" target="_blank" rel="noopener" class="btn-download">⬇ Baixar música</a>
+              <p class="download-filename">📁 Especial para {{ order.honoredName }}</p>
+              <button
+                type="button"
+                class="btn-download"
+                :disabled="downloadingId === order.orderId"
+                @click="downloadMusic(order)"
+              >
+                {{ downloadingId === order.orderId ? 'Baixando…' : '⬇ Baixar música' }}
+              </button>
             </div>
 
             <div v-else-if="['pending', 'generating_lyrics', 'generating_music'].includes(order.status)" class="progress-alert">
@@ -626,6 +648,13 @@ h1 {
   border: 1px solid #bbf7d0;
 }
 
+.download-filename {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #15803d;
+}
+
 .progress-alert {
   background: #f0f8ff;
   border: 1px solid #bae6fd;
@@ -648,6 +677,11 @@ h1 {
   font-weight: 700;
   cursor: pointer;
   text-decoration: none;
+}
+
+.btn-download:disabled {
+  opacity: 0.7;
+  cursor: wait;
 }
 
 .btn-download {
