@@ -1,20 +1,24 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getMyOrders } from '../services/api.service'
 import { getSavedOrderId } from '../quiz/quizState'
 import { LOGO_URL } from '../constants'
 
+const SESSION_KEY = 'fluisom_orders_session'
+
 const router = useRouter()
 const route = useRoute()
 
 const email = ref('')
+const loggedEmail = ref('')
 const orders = ref([])
 const loading = ref(false)
 const error = ref('')
-const searched = ref(false)
 const playingId = ref(null)
 const audioEls = ref({})
+
+const isLoggedIn = computed(() => !!loggedEmail.value)
 
 const STATUS_COLORS = {
   pending: '#8aaabb',
@@ -28,15 +32,30 @@ const STATUS_COLORS = {
   failed: '#ef4444',
 }
 
+function saveSession(value) {
+  sessionStorage.setItem(SESSION_KEY, value)
+}
+
+function clearSession() {
+  sessionStorage.removeItem(SESSION_KEY)
+  sessionStorage.removeItem('fluisom_orders_email')
+}
+
+function restoreSession() {
+  const saved = sessionStorage.getItem(SESSION_KEY) || route.query.email
+  if (!saved) return false
+  loggedEmail.value = String(saved)
+  email.value = loggedEmail.value
+  return true
+}
+
 onMounted(() => {
-  const saved = sessionStorage.getItem('fluisom_orders_email') || route.query.email
-  if (saved) {
-    email.value = String(saved)
+  if (restoreSession()) {
     fetchOrders()
   }
 })
 
-async function fetchOrders() {
+async function login() {
   const trimmed = email.value.trim()
   if (!trimmed) {
     error.value = 'Informe seu email'
@@ -45,18 +64,46 @@ async function fetchOrders() {
 
   loading.value = true
   error.value = ''
-  searched.value = true
 
   try {
     const data = await getMyOrders(trimmed, getSavedOrderId() || undefined)
+    loggedEmail.value = trimmed
     orders.value = data.orders || []
+    saveSession(trimmed)
     sessionStorage.setItem('fluisom_orders_email', trimmed)
+  } catch (err) {
+    error.value = err.message || 'Não foi possível acessar seus pedidos'
+    orders.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchOrders() {
+  if (!loggedEmail.value) return
+
+  loading.value = true
+  error.value = ''
+
+  try {
+    const data = await getMyOrders(loggedEmail.value, getSavedOrderId() || undefined)
+    orders.value = data.orders || []
   } catch (err) {
     error.value = err.message || 'Não foi possível carregar seus pedidos'
     orders.value = []
   } finally {
     loading.value = false
   }
+}
+
+function logout() {
+  Object.values(audioEls.value).forEach((el) => el?.pause())
+  playingId.value = null
+  clearSession()
+  loggedEmail.value = ''
+  email.value = ''
+  orders.value = []
+  error.value = ''
 }
 
 function statusColor(status) {
@@ -129,95 +176,131 @@ onBeforeUnmount(() => {
       <a href="/pv" class="logo-link" @click.prevent="goHome">
         <img :src="LOGO_URL" alt="Fluisom" class="logo" />
       </a>
-      <button type="button" class="btn-back-home" @click="goHome">← Voltar ao site</button>
+      <div class="header-actions">
+        <button v-if="isLoggedIn" type="button" class="btn-logout" @click="logout">Sair</button>
+        <button type="button" class="btn-back-home" @click="goHome">← Voltar ao site</button>
+      </div>
     </header>
 
     <main class="orders-main">
-      <h1>Meus Pedidos</h1>
-      <p class="lead">Digite o email usado no quiz para ver o status e ouvir as prévias das suas músicas.</p>
+      <!-- Tela de login -->
+      <template v-if="!isLoggedIn">
+        <div class="login-card">
+          <h1>Meus Pedidos</h1>
+          <p class="lead">Entre com o email usado no pedido para acessar suas músicas.</p>
 
-      <form class="search-form" @submit.prevent="fetchOrders">
-        <input
-          v-model="email"
-          type="email"
-          class="search-input"
-          placeholder="seu@email.com"
-          required
-        />
-        <button type="submit" class="btn-search" :disabled="loading">
-          {{ loading ? 'Buscando…' : 'Buscar pedidos' }}
-        </button>
-      </form>
-
-      <p v-if="error" class="error-msg">{{ error }}</p>
-
-      <div v-if="loading" class="loading-box">
-        <div class="spinner" />
-        <p>Carregando seus pedidos…</p>
-      </div>
-
-      <div v-else-if="searched && !orders.length" class="empty-box">
-        <p>Nenhum pedido encontrado para <strong>{{ email }}</strong>.</p>
-        <p class="empty-hint">Verifique o email ou <button type="button" class="link-btn" @click="router.push('/passo/1')">crie sua primeira música</button>.</p>
-      </div>
-
-      <div v-else-if="orders.length" class="orders-list">
-        <article v-for="order in orders" :key="order.orderId" class="order-card">
-          <div class="order-top">
-            <img
-              v-if="order.coverImageUrl"
-              :src="order.coverImageUrl"
-              :alt="order.musicTitle || order.honoredName"
-              class="order-cover"
+          <form class="login-form" @submit.prevent="login">
+            <label class="field-label" for="orders-email">Email</label>
+            <input
+              id="orders-email"
+              v-model="email"
+              type="email"
+              class="search-input"
+              placeholder="seu@email.com"
+              autocomplete="email"
+              required
             />
-            <div v-else class="order-cover placeholder">🎵</div>
-            <div class="order-info">
-              <h2>{{ order.musicTitle || `Música para ${order.honoredName}` }}</h2>
-              <p class="order-honored">Para: <strong>{{ order.honoredName }}</strong></p>
-              <p class="order-date">{{ formatDate(order.createdAt) }}</p>
-              <span class="status-badge" :style="{ background: statusColor(order.status) + '22', color: statusColor(order.status) }">
-                {{ order.statusLabel }}
-              </span>
+            <button type="submit" class="btn-search" :disabled="loading">
+              {{ loading ? 'Entrando…' : 'Entrar' }}
+            </button>
+          </form>
+
+          <p class="secure-note">🔒 Acesso Seguro e privado</p>
+          <p v-if="error" class="error-msg">{{ error }}</p>
+        </div>
+      </template>
+
+      <!-- Área logada -->
+      <template v-else>
+        <div class="session-bar">
+          <div class="session-info">
+            <span class="session-icon">👤</span>
+            <div>
+              <p class="session-label">Conectado como</p>
+              <p class="session-email">{{ loggedEmail }}</p>
             </div>
           </div>
+          <button type="button" class="btn-logout-inline" @click="logout">Sair</button>
+        </div>
 
-          <div v-if="order.canPreview && order.previewAudioUrl" class="preview-block">
-            <audio
-              :ref="(el) => setAudioEl(order.orderId, el)"
-              :src="order.previewAudioUrl"
-              preload="metadata"
-              class="sr-only-audio"
-              @ended="onAudioEnded(order.orderId)"
-            />
-            <button
-              type="button"
-              class="btn-play"
-              :class="{ playing: playingId === order.orderId }"
-              @click="togglePlay(order)"
-            >
-              {{ playingId === order.orderId ? '⏸ Pausar prévia' : '▶ Ouvir prévia' }}
-            </button>
-          </div>
+        <h1 class="dashboard-title">Seus pedidos</h1>
 
-          <div v-if="order.needsPayment" class="payment-alert">
-            <p>💳 Pagamento pendente — finalize para baixar a versão completa (R$ {{ order.paymentAmount.toFixed(2).replace('.', ',') }})</p>
-            <button type="button" class="btn-pay" @click="goPay(order.orderId)">Finalizar pagamento</button>
-          </div>
+        <p v-if="error" class="error-msg">{{ error }}</p>
 
-          <div v-else-if="order.canDownload && order.fullAudioUrl" class="download-block">
-            <p>✅ Pagamento confirmado! Baixe sua música completa:</p>
-            <a :href="order.fullAudioUrl" target="_blank" rel="noopener" class="btn-download">⬇ Baixar música</a>
-          </div>
+        <div v-if="loading" class="loading-box">
+          <div class="spinner" />
+          <p>Carregando seus pedidos…</p>
+        </div>
 
-          <div v-else-if="['pending', 'generating_lyrics', 'generating_music'].includes(order.status)" class="progress-alert">
-            <p>⏳ Sua música ainda está sendo criada. Atualize esta página em alguns minutos.</p>
-          </div>
+        <div v-else-if="!orders.length" class="empty-box">
+          <p>Nenhum pedido encontrado para <strong>{{ loggedEmail }}</strong>.</p>
+          <p class="empty-hint">
+            Verifique o email ou
+            <button type="button" class="link-btn" @click="router.push('/passo/1')">crie sua primeira música</button>.
+          </p>
+        </div>
 
-          <div v-else-if="order.status === 'failed'" class="failed-alert">
-            <p>❌ Houve um problema na geração. Entre em contato: contato@fluisom.com</p>
-          </div>
-        </article>
-      </div>
+        <div v-else class="orders-list">
+          <article v-for="order in orders" :key="order.orderId" class="order-card">
+            <div class="order-top">
+              <img
+                v-if="order.coverImageUrl"
+                :src="order.coverImageUrl"
+                :alt="order.musicTitle || order.honoredName"
+                class="order-cover"
+              />
+              <div v-else class="order-cover placeholder">🎵</div>
+              <div class="order-info">
+                <h2>{{ order.musicTitle || `Música para ${order.honoredName}` }}</h2>
+                <p class="order-honored">Para: <strong>{{ order.honoredName }}</strong></p>
+                <p class="order-date">{{ formatDate(order.createdAt) }}</p>
+                <span
+                  class="status-badge"
+                  :style="{ background: statusColor(order.status) + '22', color: statusColor(order.status) }"
+                >
+                  {{ order.statusLabel }}
+                </span>
+              </div>
+            </div>
+
+            <div v-if="order.canPreview && order.previewAudioUrl" class="preview-block">
+              <audio
+                :ref="(el) => setAudioEl(order.orderId, el)"
+                :src="order.previewAudioUrl"
+                preload="metadata"
+                class="sr-only-audio"
+                @ended="onAudioEnded(order.orderId)"
+              />
+              <button
+                type="button"
+                class="btn-play"
+                :class="{ playing: playingId === order.orderId }"
+                @click="togglePlay(order)"
+              >
+                {{ playingId === order.orderId ? '⏸ Pausar prévia' : '▶ Ouvir prévia' }}
+              </button>
+            </div>
+
+            <div v-if="order.needsPayment" class="payment-alert">
+              <p>💳 Pagamento pendente — finalize para baixar a versão completa (R$ {{ order.paymentAmount.toFixed(2).replace('.', ',') }})</p>
+              <button type="button" class="btn-pay" @click="goPay(order.orderId)">Finalizar pagamento</button>
+            </div>
+
+            <div v-else-if="order.canDownload && order.fullAudioUrl" class="download-block">
+              <p>✅ Pagamento confirmado! Baixe sua música completa:</p>
+              <a :href="order.fullAudioUrl" target="_blank" rel="noopener" class="btn-download">⬇ Baixar música</a>
+            </div>
+
+            <div v-else-if="['pending', 'generating_lyrics', 'generating_music'].includes(order.status)" class="progress-alert">
+              <p>⏳ Sua música ainda está sendo criada. Atualize esta página em alguns minutos.</p>
+            </div>
+
+            <div v-else-if="order.status === 'failed'" class="failed-alert">
+              <p>❌ Houve um problema na geração. Entre em contato: contato@fluisom.com</p>
+            </div>
+          </article>
+        </div>
+      </template>
     </main>
   </div>
 </template>
@@ -247,13 +330,29 @@ onBeforeUnmount(() => {
 .logo { height: 44px; width: auto; object-fit: contain; }
 .logo-link { display: flex; }
 
-.btn-back-home {
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-back-home,
+.btn-logout {
   background: none;
   border: none;
-  color: #0099b8;
   font-weight: 600;
   font-size: 0.85rem;
   cursor: pointer;
+}
+
+.btn-back-home { color: #0099b8; }
+
+.btn-logout {
+  color: #ef4444;
+  padding: 6px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
 }
 
 .orders-main {
@@ -262,9 +361,22 @@ onBeforeUnmount(() => {
   padding: 24px 16px 48px;
 }
 
+.login-card {
+  background: white;
+  border: 1px solid #daeaf5;
+  border-radius: 20px;
+  padding: 28px 24px;
+  box-shadow: 0 8px 32px rgba(0, 153, 184, 0.08);
+}
+
 h1 {
   font-size: 1.75rem;
   margin: 0 0 8px;
+}
+
+.dashboard-title {
+  font-size: 1.5rem;
+  margin: 0 0 20px;
 }
 
 .lead {
@@ -273,24 +385,92 @@ h1 {
   line-height: 1.5;
 }
 
-.search-form {
+.login-form {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-bottom: 24px;
+  margin-bottom: 10px;
 }
 
-@media (min-width: 480px) {
-  .search-form { flex-direction: row; }
+.field-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4a6a80;
+}
+
+.secure-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 16px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4a6a80;
+}
+
+.session-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: white;
+  border: 1px solid #daeaf5;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 16px rgba(0, 153, 184, 0.06);
+}
+
+.session-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.session-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.session-label {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #4a6a80;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.session-email {
+  margin: 2px 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0d2137;
+  word-break: break-all;
+}
+
+.btn-logout-inline {
+  flex-shrink: 0;
+  background: #fef2f2;
+  color: #ef4444;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
 }
 
 .search-input {
-  flex: 1;
+  width: 100%;
   height: 48px;
   border: 1px solid #daeaf5;
   border-radius: 12px;
   padding: 0 16px;
   font-size: 1rem;
+  box-sizing: border-box;
 }
 
 .btn-search {
@@ -305,9 +485,15 @@ h1 {
   white-space: nowrap;
 }
 
+.btn-search:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .error-msg {
   color: #ef4444;
   margin-bottom: 16px;
+  text-align: center;
 }
 
 .loading-box,
