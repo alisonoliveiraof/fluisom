@@ -68,26 +68,26 @@
   left: 0;
   right: 0;
   z-index: 100;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 2px 16px rgba(0, 153, 184, 0.07);
+  padding-top: env(safe-area-inset-top, 0);
 }
 
 .header-inner {
   max-width: 720px;
   margin: 0 auto;
-  padding: 14px 24px;
+  padding: 10px 16px 12px;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 @media (min-width: 768px) {
   .header-inner {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
     padding: 14px 48px;
   }
 }
@@ -97,23 +97,34 @@
   align-items: center;
 }
 .logo-img {
-  height: 62px;
+  height: 44px;
   width: auto;
+  max-width: 120px;
   display: block;
   object-fit: contain;
 }
+@media (min-width: 768px) {
+  .logo-img {
+    height: 62px;
+    max-width: none;
+  }
+}
 .logo-sm .logo-img {
-  height: 48px;
+  height: 40px;
 }
 
-.progress-section { width: 100%; max-width: 280px; }
-@media (min-width: 768px) { .progress-section { width: auto; min-width: 220px; } }
+.progress-section { width: auto; flex: 1; min-width: 0; max-width: 200px; }
+@media (min-width: 768px) { .progress-section { max-width: 280px; min-width: 220px; flex: none; } }
 
 .progress-label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-secondary);
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  white-space: nowrap;
+}
+@media (min-width: 768px) {
+  .progress-label { font-size: 0.75rem; margin-bottom: 8px; }
 }
 
 .progress-dots {
@@ -159,11 +170,11 @@
   z-index: 1;
   max-width: 720px;
   margin: 0 auto;
-  padding: 100px 16px 48px;
+  padding: calc(88px + env(safe-area-inset-top, 0)) 16px calc(48px + env(safe-area-inset-bottom, 0));
 }
 
 @media (min-width: 768px) {
-  .main { padding: 100px 48px 64px; }
+  .main { padding: calc(100px + env(safe-area-inset-top, 0)) 48px 64px; }
 }
 
 .step { animation: slideInStagger 0.4s ease both; }

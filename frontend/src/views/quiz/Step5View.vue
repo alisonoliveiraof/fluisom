@@ -8,7 +8,6 @@ const {
   playedBars,
   audioPlaying,
   audioProgress,
-  audioLocked,
   audioTimeDisplay,
   toggleAudio,
   guarantees,
@@ -19,6 +18,8 @@ const {
   onWhatsappInput,
   previewData,
   previewAudioEl,
+  previewLoading,
+  generationError,
 } = useQuiz()
 
 function onPreviewEnded() {
@@ -30,52 +31,64 @@ function onPreviewEnded() {
   <section class="step">
     <div class="banner-celebrate">✨ Sua prévia exclusiva está pronta! Ouça antes de finalizar.</div>
 
-    <div v-if="previewData?.coverImageUrl" class="preview-cover-wrap">
-      <img :src="previewData.coverImageUrl" :alt="previewData.musicTitle || 'Capa da música'" class="preview-cover" />
+    <div v-if="previewLoading" class="preview-loading">
+      <div class="spinner" />
+      <p>Preparando sua prévia para reprodução…</p>
     </div>
 
-    <p v-if="previewData?.musicTitle" class="preview-title">{{ previewData.musicTitle }}</p>
-
-    <div v-if="previewData?.lyricsPreview" class="lyrics-preview">
-      <p v-for="(line, i) in previewData.lyricsPreview.split('\n')" :key="i">{{ line }}</p>
+    <div v-else-if="generationError && !previewData" class="preview-error">
+      <p>{{ generationError }}</p>
     </div>
 
-    <audio
-      v-if="previewData?.previewAudioUrl"
-      ref="previewAudioEl"
-      :src="previewData.previewAudioUrl"
-      preload="metadata"
-      @ended="onPreviewEnded"
-    />
+    <template v-else-if="previewData">
+      <div class="preview-hero">
+        <div v-if="previewData.coverImageUrl" class="preview-cover-wrap">
+          <img :src="previewData.coverImageUrl" :alt="previewData.musicTitle || 'Capa da música'" class="preview-cover" />
+        </div>
+        <div v-else class="preview-cover-placeholder">🎵</div>
 
-    <div class="audio-player">
-      <div class="waveform">
-        <span
-          v-for="(h, i) in waveHeights"
-          :key="i"
-          class="wave-bar"
-          :class="{ played: i < playedBars }"
-          :style="{ height: h + 'px' }"
+        <p v-if="previewData.musicTitle" class="preview-title">{{ previewData.musicTitle }}</p>
+        <p class="preview-subtitle">Prévia para {{ previewData.honoredName || honoredDisplay }}</p>
+
+        <audio
+          v-if="previewData.previewAudioUrl"
+          ref="previewAudioEl"
+          :src="previewData.previewAudioUrl"
+          preload="metadata"
+          @ended="onPreviewEnded"
         />
-      </div>
-      <div class="audio-controls">
-        <button type="button" class="play-btn" @click="toggleAudio">{{ audioPlaying ? '⏸' : '▶' }}</button>
-        <div class="audio-info">
-          <span class="audio-name">Prévia — {{ previewData?.honoredName || honoredDisplay }}</span>
-          <span class="audio-time">{{ audioTimeDisplay }}</span>
+
+        <div class="audio-player preview-player">
+          <div class="waveform">
+            <span
+              v-for="(h, i) in waveHeights"
+              :key="i"
+              class="wave-bar"
+              :class="{ played: i < playedBars }"
+              :style="{ height: h + 'px' }"
+            />
+          </div>
+          <div class="audio-controls">
+            <button type="button" class="play-btn play-btn-lg" @click="toggleAudio">
+              {{ audioPlaying ? '⏸' : '▶' }}
+            </button>
+            <div class="audio-info">
+              <span class="audio-name">Ouça sua prévia exclusiva</span>
+              <span class="audio-time">{{ audioTimeDisplay }}</span>
+            </div>
+          </div>
+          <div class="audio-progress-track">
+            <div class="audio-progress-fill" :style="{ width: audioProgress + '%' }" />
+          </div>
+          <p class="preview-hint">🔊 Toque em play para ouvir como ficou a sua música</p>
+        </div>
+
+        <div v-if="previewData.lyricsPreview" class="lyrics-preview">
+          <p class="lyrics-label">Trecho da letra</p>
+          <p v-for="(line, i) in previewData.lyricsPreview.split('\n')" :key="i">{{ line }}</p>
         </div>
       </div>
-      <div class="audio-progress-track" @click="audioProgress = Math.min(100, audioProgress + 20)">
-        <div class="audio-progress-fill" :style="{ width: audioProgress + '%' }" />
-      </div>
-      <transition name="fade">
-        <div v-if="audioLocked" class="audio-overlay">
-          <span class="overlay-lock">🔒</span>
-          <p class="overlay-title">Prévia Exclusiva</p>
-          <p class="overlay-desc">Versão completa disponível após o pagamento</p>
-        </div>
-      </transition>
-    </div>
+    </template>
 
     <div class="contact-section">
       <h2 class="section-title">📬 Para onde enviamos sua música?</h2>
@@ -92,7 +105,7 @@ function onPreviewEnded() {
           <span class="input-prefix">📧</span>
           <input v-model="form.email" type="email" class="input input-with-icon" placeholder="seu@email.com" />
         </div>
-        <p class="hint">🔒 Sem spam. Jamais compartilhamos seus dados.</p>
+        <p class="hint">🔒 Use este email para acessar seus pedidos em "Meus Pedidos".</p>
       </div>
       <div class="field-group">
         <label class="label">
@@ -169,6 +182,35 @@ function onPreviewEnded() {
 </template>
 
 <style scoped>
+.preview-loading,
+.preview-error {
+  text-align: center;
+  padding: 32px 16px;
+  color: #4a6a80;
+}
+
+.preview-error {
+  color: #ef4444;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 12px;
+  border: 3px solid #daeaf5;
+  border-top-color: #0099b8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.preview-hero {
+  margin-bottom: 24px;
+}
+
 .preview-cover-wrap {
   display: flex;
   justify-content: center;
@@ -176,18 +218,55 @@ function onPreviewEnded() {
 }
 
 .preview-cover {
-  width: 140px;
-  height: 140px;
+  width: 160px;
+  height: 160px;
   border-radius: 16px;
   object-fit: cover;
   box-shadow: 0 8px 24px rgba(0, 153, 184, 0.2);
 }
 
+.preview-cover-placeholder {
+  width: 160px;
+  height: 160px;
+  margin: 0 auto 16px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #00c9d4, #0066a8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+}
+
 .preview-title {
   text-align: center;
-  font-weight: 700;
+  font-weight: 800;
+  font-size: 1.2rem;
   color: #0099b8;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
+}
+
+.preview-subtitle {
+  text-align: center;
+  color: #4a6a80;
+  margin-bottom: 16px;
+}
+
+.preview-player {
+  margin-bottom: 16px;
+}
+
+.play-btn-lg {
+  width: 56px !important;
+  height: 56px !important;
+  font-size: 1.4rem !important;
+}
+
+.preview-hint {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #0099b8;
+  margin: 12px 0 0;
+  font-weight: 600;
 }
 
 .lyrics-preview {
@@ -195,11 +274,16 @@ function onPreviewEnded() {
   border: 1px solid #daeaf5;
   border-radius: 12px;
   padding: 14px 16px;
-  margin-bottom: 16px;
   text-align: center;
   color: #4a6a80;
   font-size: 0.92rem;
   line-height: 1.6;
+}
+
+.lyrics-label {
+  font-weight: 700;
+  color: #0099b8;
+  margin: 0 0 8px;
 }
 
 .lyrics-preview p {

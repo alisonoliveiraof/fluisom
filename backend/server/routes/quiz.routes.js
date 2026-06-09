@@ -4,6 +4,7 @@ import {
   startQuiz,
   generateLyricsStep,
   submitMusicStep,
+  getMyOrders,
   getQuizStatus,
   getQuizPreview,
   updateContact,
@@ -30,6 +31,7 @@ const pollLimiter = rateLimit({
   message: { error: true, message: 'Muitas consultas. Aguarde um momento.', code: 'RATE_LIMIT' },
 })
 
+router.get('/orders', pollLimiter, getMyOrders)
 router.post('/start', startLimiter, validateQuizStart, startQuiz)
 router.post('/:orderId/lyrics', lyricsLimiter, generateLyricsStep)
 router.post('/:orderId/music', startLimiter, submitMusicStep)

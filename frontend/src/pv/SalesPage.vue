@@ -116,6 +116,11 @@ function navigateToQuiz() {
   router.push('/passo/1')
 }
 
+function navigateToOrders() {
+  mobileMenuOpen.value = false
+  router.push('/meus-pedidos')
+}
+
 function scrollTo(id) {
   mobileMenuOpen.value = false
   const el = document.getElementById(id)
@@ -287,7 +292,7 @@ onUnmounted(() => {
           <button type="button" @click="scrollTo('como-funciona')">Como funciona</button>
           <button type="button" @click="scrollTo('avaliacoes')">Avaliações</button>
           <button type="button" @click="scrollTo('exemplos')">Exemplos</button>
-          <a href="#" class="nav-link-ext">Ver Meus Pedidos</a>
+          <button type="button" class="nav-link-ext" @click="navigateToOrders">Ver Meus Pedidos</button>
         </nav>
         <div class="topbar-actions">
           <button type="button" class="btn-cta-sm hide-mobile" @click="navigateToQuiz">🎵 Criar Sua Música</button>
@@ -304,8 +309,8 @@ onUnmounted(() => {
           <button type="button" @click="scrollTo('como-funciona')">Como funciona</button>
           <button type="button" @click="scrollTo('avaliacoes')">Avaliações</button>
           <button type="button" @click="scrollTo('exemplos')">Exemplos</button>
-          <a href="#">Ver Meus Pedidos</a>
-          <button type="button" class="btn-cta-sm" @click="navigateToQuiz">🎵 Criar Sua Música</button>
+          <button type="button" @click="navigateToOrders">Ver Meus Pedidos</button>
+          <button type="button" class="btn-cta-sm drawer-cta" @click="navigateToQuiz">🎵 Criar Sua Música</button>
         </nav>
       </div>
     </transition>
@@ -633,7 +638,7 @@ onUnmounted(() => {
           <button type="button" @click="scrollTo('como-funciona')">Como funciona</button>
           <button type="button" @click="scrollTo('exemplos')">Exemplos</button>
           <button type="button" @click="scrollTo('duvidas')">Dúvidas Frequentes</button>
-          <a href="#">Ver meus pedidos</a>
+          <button type="button" @click="navigateToOrders">Ver meus pedidos</button>
         </div>
         <div>
           <h4>Contato</h4>
@@ -729,6 +734,16 @@ onUnmounted(() => {
   background: white; padding: 24px; display: flex; flex-direction: column; gap: 16px;
 }
 .drawer button, .drawer a { background: none; border: none; font: inherit; text-align: left; cursor: pointer; color: var(--text); font-weight: 600; text-decoration: none; }
+.drawer .drawer-cta {
+  background: linear-gradient(135deg, var(--coral), var(--amber)) !important;
+  color: white !important;
+  border-radius: 10px;
+  padding: 14px 20px !important;
+  text-align: center !important;
+  font-weight: 700 !important;
+  margin-top: 8px;
+  box-shadow: 0 6px 20px rgba(255,107,107,0.35);
+}
 .drawer-close { align-self: flex-end; font-size: 1.25rem; }
 .drawer-enter-active, .drawer-leave-active { transition: opacity 0.3s; }
 .drawer-enter-from, .drawer-leave-to { opacity: 0; }

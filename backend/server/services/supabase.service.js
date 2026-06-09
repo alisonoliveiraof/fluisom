@@ -208,6 +208,22 @@ export async function getOldestPendingOrder() {
   return data?.[0] || null
 }
 
+export async function listOrdersByEmail(email) {
+  const supabase = getSupabase()
+  const normalized = email.trim().toLowerCase()
+  const { data, error } = await supabase
+    .from('quiz_orders')
+    .select(
+      'id, created_at, honored_name, status, music_title, preview_audio_url, full_audio_url, cover_image_url, payment_status, payment_amount, email, full_name',
+    )
+    .ilike('email', normalized)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  if (error) throw new Error(`Erro ao buscar pedidos: ${error.message}`)
+  return data || []
+}
+
 export async function getStaleMusicOrders(limit = 10) {
   const supabase = getSupabase()
   const staleBefore = new Date(Date.now() - 2 * 60 * 1000).toISOString()

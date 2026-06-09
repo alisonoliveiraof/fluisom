@@ -7,6 +7,7 @@ import {
   updateOrder,
   getAdminSetting,
   countTodayGenerations,
+  listOrdersByEmail,
 } from '../services/supabase.service.js'
 import { getLyricsPreview } from '../utils/prompt.builder.js'
 import { orderStatusToProgress, orderStatusLabel } from '../utils/status.mapper.js'
@@ -132,6 +133,58 @@ export async function submitMusicStep(req, res, next) {
       status: updated.status,
       progress: orderStatusToProgress(updated.status, updated.suno_status),
       statusLabel: orderStatusLabel(updated.status),
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+function mapOrderForClient(order) {
+  return {
+    orderId: order.id,
+    honoredName: order.honored_name,
+    status: order.status,
+    statusLabel: orderStatusLabel(order.status),
+    musicTitle: order.music_title,
+    previewAudioUrl: order.preview_audio_url,
+    fullAudioUrl: order.full_audio_url,
+    coverImageUrl: order.cover_image_url,
+    paymentStatus: order.payment_status || 'unpaid',
+    paymentAmount: Number(order.payment_amount || 47.9),
+    createdAt: order.created_at,
+    canPreview: !!order.preview_audio_url && ['music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered'].includes(order.status),
+    canDownload: order.payment_status === 'paid' && !!order.full_audio_url,
+    needsPayment: ['music_ready', 'preview_shown', 'payment_pending'].includes(order.status) && order.payment_status !== 'paid',
+  }
+}
+
+export async function getMyOrders(req, res, next) {
+  try {
+    const email = (req.query.email || '').trim()
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRe.test(email)) {
+      return res.status(400).json({ error: true, message: 'Informe um email válido', code: 'INVALID_EMAIL' })
+    }
+
+    const normalizedEmail = email.toLowerCase()
+    const orderId = (req.query.orderId || '').trim()
+
+    if (orderId) {
+      try {
+        const linked = await getOrderById(orderId)
+        const linkedEmail = (linked.email || '').trim().toLowerCase()
+        if (!linkedEmail) {
+          await updateOrder(orderId, { email: normalizedEmail })
+        }
+      } catch {
+        // orderId inválido — segue só com busca por email
+      }
+    }
+
+    const orders = await listOrdersByEmail(normalizedEmail)
+    res.json({
+      email: normalizedEmail,
+      orders: orders.map(mapOrderForClient),
     })
   } catch (err) {
     next(err)

@@ -12,11 +12,17 @@ const {
   generationError,
   generationStatus,
   previewData,
+  previewAudioEl,
+  previewLoading,
+  toggleAudio,
+  audioPlaying,
 } = useQuiz()
 
 const canContinue = computed(() =>
   ['music_ready', 'preview_shown'].includes(generationStatus.value) || !!previewData.value,
 )
+
+const musicReady = computed(() => !!previewData.value?.previewAudioUrl)
 </script>
 
 <template>
@@ -29,22 +35,45 @@ const canContinue = computed(() =>
       <div class="progress-bar" :style="{ width: Math.max(0, generationProgress) + '%' }" />
       <p class="progress-status">{{ generationStatusLabel }}</p>
       <p v-if="generationError" class="progress-error">{{ generationError }}</p>
+      <p v-if="previewLoading" class="progress-hint">Carregando sua prévia exclusiva…</p>
     </div>
 
-    <div class="bounce-icon">🎶</div>
-    <h1 class="title">Você está quase lá!</h1>
+    <audio
+      v-if="previewData?.previewAudioUrl"
+      ref="previewAudioEl"
+      :src="previewData.previewAudioUrl"
+      preload="metadata"
+    />
+
+    <div v-if="musicReady" class="preview-ready-card">
+      <p class="preview-ready-title">🎧 Sua prévia está pronta!</p>
+      <p class="preview-ready-desc">Ouça um trecho da música antes de continuar.</p>
+      <button type="button" class="btn-preview-play" @click="toggleAudio">
+        {{ audioPlaying ? '⏸ Pausar prévia' : '▶ Ouvir prévia agora' }}
+      </button>
+    </div>
+
+    <div v-else class="bounce-icon">🎶</div>
+    <h1 class="title">{{ musicReady ? 'Ouça como ficou!' : 'Você está quase lá!' }}</h1>
     <p class="subtitle">
-      A um passo de presentear <span class="highlight-name">{{ honoredDisplay }}</span> com uma música que vai fluir para sempre em seu coração. Enquanto produzimos sua música personalizada, assista este vídeo importante que irá explicar como funcionará a entrega.
+      <template v-if="musicReady">
+        Sua música para <span class="highlight-name">{{ honoredDisplay }}</span> já pode ser ouvida. Clique em
+        <strong>Próximo</strong> para ver a prévia completa e finalizar.
+      </template>
+      <template v-else>
+        A um passo de presentear <span class="highlight-name">{{ honoredDisplay }}</span> com uma música que vai fluir
+        para sempre em seu coração. Enquanto produzimos sua música, assista este vídeo.
+      </template>
     </p>
 
-    <div class="video-player vturb-player-wrap">
+    <div v-if="!musicReady" class="video-player vturb-player-wrap">
       <VturbPlayer />
     </div>
 
     <nav class="nav nav-center">
       <button type="button" class="btn-back" @click="goBack">← Voltar</button>
       <button type="button" class="btn-next" :disabled="!canContinue" @click="goNext">
-        Próximo
+        {{ musicReady ? 'Ver prévia completa' : 'Próximo' }}
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
       </button>
     </nav>
@@ -84,5 +113,46 @@ const canContinue = computed(() =>
   text-align: center;
   color: #ef4444;
   font-size: 0.85rem;
+}
+
+.progress-hint {
+  margin: 8px 0 0;
+  text-align: center;
+  color: #0099b8;
+  font-size: 0.85rem;
+}
+
+.preview-ready-card {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto 20px;
+  padding: 20px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f0fff8, #f0f8ff);
+  border: 1px solid #daeaf5;
+  text-align: center;
+}
+
+.preview-ready-title {
+  font-weight: 800;
+  color: #0099b8;
+  margin: 0 0 8px;
+}
+
+.preview-ready-desc {
+  margin: 0 0 16px;
+  color: #4a6a80;
+  font-size: 0.92rem;
+}
+
+.btn-preview-play {
+  background: linear-gradient(135deg, #00c9d4, #0066a8);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 24px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
 }
 </style>

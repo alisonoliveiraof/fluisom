@@ -16,6 +16,11 @@ const router = createRouter({
       component: () => import('../pv/SalesPage.vue'),
     },
     {
+      path: '/meus-pedidos',
+      name: 'my-orders',
+      component: () => import('../views/MyOrders.vue'),
+    },
+    {
       path: '/',
       component: QuizLayout,
       children: [

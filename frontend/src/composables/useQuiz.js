@@ -65,6 +65,7 @@ function createQuiz() {
   const generationLoading = ref(false)
   const previewData = ref(null)
   const previewAudioEl = ref(null)
+  const previewLoading = ref(false)
 
   const waveHeights = Array.from({ length: 40 }, () => Math.floor(Math.random() * 40 + 8))
   const qrPattern = Array.from({ length: 64 }, () => Math.random() > 0.45)
@@ -155,6 +156,9 @@ function createQuiz() {
       if (status.status === 'music_ready' || status.status === 'preview_shown') {
         clearPollTimer()
         await loadPreview()
+        if (Number(route.meta.step) === 4) {
+          goToStep(5)
+        }
       } else if (status.status === 'failed') {
         clearPollTimer()
         generationError.value = status.errorMessage || 'Erro na geração da música'
@@ -218,13 +222,21 @@ function createQuiz() {
   }
 
   async function loadPreview() {
+    if (!orderId.value) return
+    previewLoading.value = true
     try {
       const preview = await getQuizPreview(orderId.value)
       previewData.value = preview
       generationProgress.value = 100
+      generationStatus.value = preview.status || 'preview_shown'
       generationStatusLabel.value = '✨ Sua música está pronta!'
+      if (preview.previewAudioUrl) {
+        audioLocked.value = false
+      }
     } catch (err) {
       generationError.value = err.message
+    } finally {
+      previewLoading.value = false
     }
   }
 
@@ -450,6 +462,20 @@ function createQuiz() {
   })
 
   watch(
+    () => route.query.orderId,
+    async (id) => {
+      if (!id || typeof id !== 'string') return
+      orderId.value = id
+      setPersistOrderId(id)
+      persistQuizNow()
+      const savedEmail = sessionStorage.getItem('fluisom_orders_email')
+      if (savedEmail && !form.email) form.email = savedEmail
+      await loadPreview()
+    },
+    { immediate: true },
+  )
+
+  watch(
     () => route.meta.step,
     (step) => {
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -519,6 +545,7 @@ function createQuiz() {
     generationLoading,
     previewData,
     previewAudioEl,
+    previewLoading,
     startGeneration,
     loadPreview,
   }

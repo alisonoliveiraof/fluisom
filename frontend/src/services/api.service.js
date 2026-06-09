@@ -47,8 +47,33 @@ export function getQuizStatus(orderId) {
   return request(`/quiz/status/${orderId}`)
 }
 
-export function getQuizPreview(orderId) {
-  return request(`/quiz/preview/${orderId}`)
+export async function getQuizPreview(orderId, { maxAttempts = 40 } = {}) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(`${API_URL}/quiz/preview/${orderId}`)
+    const data = await res.json().catch(() => ({}))
+
+    if (res.status === 202) {
+      await new Promise((r) => setTimeout(r, 3000))
+      continue
+    }
+
+    if (!res.ok) {
+      const err = new Error(data.message || `Erro HTTP ${res.status}`)
+      err.code = data.code
+      err.status = res.status
+      throw err
+    }
+
+    return data
+  }
+
+  throw new Error('A música ainda está sendo gerada. Tente novamente em instantes.')
+}
+
+export function getMyOrders(email, orderId) {
+  const qs = new URLSearchParams({ email })
+  if (orderId) qs.set('orderId', orderId)
+  return request(`/quiz/orders?${qs.toString()}`)
 }
 
 export function updateQuizContact(orderId, contact) {
@@ -136,8 +161,11 @@ export function exportAdminOrders(params = {}) {
 
 export default {
   startQuiz,
+  generateQuizLyrics,
+  submitQuizMusic,
   getQuizStatus,
   getQuizPreview,
+  getMyOrders,
   updateQuizContact,
   adminLogin,
   getAdminDashboard,
