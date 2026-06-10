@@ -156,9 +156,6 @@ function createQuiz() {
       if (status.status === 'music_ready' || status.status === 'preview_shown') {
         clearPollTimer()
         await loadPreview()
-        if (Number(route.meta.step) === 4) {
-          goToStep(5)
-        }
       } else if (status.status === 'failed') {
         clearPollTimer()
         generationError.value = status.errorMessage || 'Erro na geração da música'

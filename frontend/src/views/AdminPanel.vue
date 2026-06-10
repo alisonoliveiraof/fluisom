@@ -12,7 +12,7 @@ import {
   exportAdminOrders,
 } from '../services/api.service'
 import { LOGO_URL } from '../constants'
-import { downloadMusicFile } from '../utils/musicDownload'
+import { downloadMusicFile, normalizeOrderVersions } from '../utils/musicDownload'
 
 const ADMIN_LOGO_URL = LOGO_URL
 
@@ -37,7 +37,7 @@ const filterSearch = ref('')
 const loading = ref(false)
 const ordersError = ref('')
 const coverDownloading = ref(false)
-const musicDownloading = ref(false)
+const musicDownloadingKey = ref(null)
 
 const selectedOrder = ref(null)
 const selectedLogs = ref([])
@@ -120,16 +120,21 @@ async function loadOrders(page = 1) {
   }
 }
 
-async function downloadMusic(order) {
-  const url = order?.full_audio_url || order?.fullAudioUrl || order?.preview_audio_url || order?.previewAudioUrl
+function orderVersions(order) {
+  return normalizeOrderVersions(order).filter((v) => v.audioUrl)
+}
+
+async function downloadMusic(order, version) {
+  const url = version?.audioUrl
   if (!url) return
 
   const honoredName = order?.honored_name || order?.honoredName
-  musicDownloading.value = true
+  const key = `${order.id}-v${version.version}`
+  musicDownloadingKey.value = key
   try {
-    await downloadMusicFile({ url, honoredName })
+    await downloadMusicFile({ url, honoredName, version: version.version })
   } finally {
-    musicDownloading.value = false
+    musicDownloadingKey.value = null
   }
 }
 
@@ -469,20 +474,26 @@ onUnmounted(stopAutoRefresh)
             <textarea readonly :value="selectedOrder.generated_lyrics" rows="8" />
           </section>
 
-          <section v-if="selectedOrder.preview_audio_url || selectedOrder.full_audio_url || selectedOrder.cover_image_url">
+          <section v-if="orderVersions(selectedOrder).length || selectedOrder.cover_image_url">
             <h4>Áudio e capa</h4>
-            <div v-if="selectedOrder.preview_audio_url || selectedOrder.full_audio_url" class="audio-block">
-              <audio :src="selectedOrder.full_audio_url || selectedOrder.preview_audio_url" controls />
-              <p v-if="selectedOrder.honored_name" class="download-filename">
-                📁 Especial para {{ selectedOrder.honored_name }}
-              </p>
+            <div
+              v-for="version in orderVersions(selectedOrder)"
+              :key="`${selectedOrder.id}-v${version.version}`"
+              class="audio-block"
+            >
+              <audio :src="version.audioUrl" controls />
+              <p class="download-filename">📁 {{ version.displayName }}</p>
               <button
                 type="button"
                 class="btn-download-music"
-                :disabled="musicDownloading"
-                @click="downloadMusic(selectedOrder)"
+                :disabled="musicDownloadingKey === `${selectedOrder.id}-v${version.version}`"
+                @click="downloadMusic(selectedOrder, version)"
               >
-                {{ musicDownloading ? 'Baixando...' : '⬇ Baixar música' }}
+                {{
+                  musicDownloadingKey === `${selectedOrder.id}-v${version.version}`
+                    ? 'Baixando...'
+                    : `⬇ Baixar ${version.displayName}`
+                }}
               </button>
             </div>
             <div v-if="selectedOrder.cover_image_url" class="cover-block">
@@ -884,7 +895,14 @@ th, td { padding: 10px 8px; border-bottom: 1px solid #eef5fb; text-align: left; 
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e8f4fb;
+}
+
+.audio-block:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .audio-block audio {
