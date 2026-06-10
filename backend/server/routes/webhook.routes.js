@@ -32,10 +32,13 @@ router.post('/suno', async (req, res) => {
       payload: req.body,
     })
 
-    if (data?.callbackType === 'complete' && Array.isArray(data?.data) && data.data.length) {
+    const clips = Array.isArray(data?.data) ? data.data : []
+    const callbackType = data?.callbackType
+
+    if (clips.length && ['complete', 'first'].includes(callbackType)) {
       const order = await getOrderById(orderId)
-      if (order.status !== 'music_ready') {
-        await finalizeMusicFromWebhookClips(orderId, data.data, {
+      if (!['music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered'].includes(order.status)) {
+        await finalizeMusicFromWebhookClips(orderId, clips, {
           title: order.music_title || buildMusicTitle(order),
           style: order.music_tags || getGenreStyle(order.genre),
         })

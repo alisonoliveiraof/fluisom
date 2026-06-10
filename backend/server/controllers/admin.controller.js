@@ -13,7 +13,8 @@ import {
   setAdminSetting,
 } from '../services/supabase.service.js'
 import { generateLyricsForOrder } from './lyrics.controller.js'
-import { generateMusicForOrder, retryMusicGeneration } from './music.controller.js'
+import { generateMusicForOrder, retryMusicGeneration, tryFinalizeFromSunoTask } from './music.controller.js'
+import { buildMusicTitle, getGenreStyle } from '../utils/prompt.builder.js'
 import { formatDatePt } from '../utils/date.formatter.js'
 
 export function login(req, res) {
@@ -69,7 +70,19 @@ export async function retryOrder(req, res, next) {
   try {
     const order = await getOrderById(req.params.orderId)
 
-    if (order.status === 'failed' && order.generated_lyrics) {
+    if (order.status === 'generating_music' && order.suno_task_id) {
+      const finalized = await tryFinalizeFromSunoTask(order.id, order.suno_task_id, {
+        title: order.music_title || buildMusicTitle(order),
+        style: order.music_tags || getGenreStyle(order.genre),
+      })
+      if (!finalized) {
+        return res.status(409).json({
+          error: true,
+          message: 'Música ainda em processamento na Suno. Tente novamente em instantes.',
+          code: 'MUSIC_STILL_GENERATING',
+        })
+      }
+    } else if (order.status === 'failed' && order.generated_lyrics) {
       await updateOrder(order.id, { status: 'lyrics_ready', error_message: null })
       await retryMusicGeneration(order.id)
     } else if (!order.generated_lyrics) {
