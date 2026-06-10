@@ -54,6 +54,8 @@ const previewVersions = computed(() => {
         <MusicVersionList
           :versions="previewVersions"
           :honored-name="previewData.honoredName || honoredDisplay"
+          preview-only
+          :preview-max-seconds="30"
         />
 
         <div v-if="previewData.lyricsPreview" class="lyrics-preview">

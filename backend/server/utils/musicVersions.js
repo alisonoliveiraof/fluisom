@@ -8,8 +8,7 @@ function mapVersionEntry(v, honoredName, index) {
   return {
     version,
     title: v.title || buildVersionTitle(honoredName, version),
-    previewAudioUrl:
-      v.previewAudioUrl || v.preview_audio_url || v.fullAudioUrl || v.full_audio_url || null,
+    previewAudioUrl: v.previewAudioUrl || v.preview_audio_url || null,
     fullAudioUrl: v.fullAudioUrl || v.full_audio_url || null,
     coverImageUrl: v.coverImageUrl || v.cover_image_url || null,
     duration: v.duration ?? v.music_duration_seconds ?? null,
@@ -48,6 +47,9 @@ export function normalizeStoredVersions(order) {
   return []
 }
 
-export function mapVersionsForClient(order) {
-  return normalizeStoredVersions(order)
+export function mapVersionsForClient(order, { includeFullAudio = false } = {}) {
+  return normalizeStoredVersions(order).map((version) => ({
+    ...version,
+    fullAudioUrl: includeFullAudio ? version.fullAudioUrl : null,
+  }))
 }

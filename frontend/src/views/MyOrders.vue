@@ -18,6 +18,7 @@ const orders = ref([])
 const loading = ref(false)
 const error = ref('')
 const downloadingKey = ref(null)
+const copiedOrderId = ref(null)
 
 const isLoggedIn = computed(() => !!loggedEmail.value)
 
@@ -143,10 +144,10 @@ function orderVersions(order) {
 }
 
 async function downloadVersion(order, version) {
-  const url = version.fullAudioUrl || version.previewAudioUrl
+  const url = version.fullAudioUrl
   if (!url) return
 
-  const key = `${order.orderId}-v${version.version}`
+  const key = `v${version.version}`
   downloadingKey.value = key
   try {
     await downloadMusicFile({
@@ -156,6 +157,29 @@ async function downloadVersion(order, version) {
     })
   } finally {
     downloadingKey.value = null
+  }
+}
+
+async function copyLyrics(order) {
+  if (!order.lyrics) return
+
+  try {
+    await navigator.clipboard.writeText(order.lyrics)
+    copiedOrderId.value = order.orderId
+    setTimeout(() => {
+      if (copiedOrderId.value === order.orderId) copiedOrderId.value = null
+    }, 2000)
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = order.lyrics
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    copiedOrderId.value = order.orderId
+    setTimeout(() => {
+      if (copiedOrderId.value === order.orderId) copiedOrderId.value = null
+    }, 2000)
   }
 }
 </script>
@@ -245,14 +269,26 @@ async function downloadVersion(order, version) {
               </div>
             </div>
 
-            <div v-if="order.canPreview && orderVersions(order).length" class="preview-block">
+            <div v-if="(order.canPreview || order.canDownload) && orderVersions(order).length" class="preview-block">
               <MusicVersionList
                 :versions="orderVersions(order)"
                 :honored-name="order.honoredName"
+                :preview-only="!order.canDownload"
+                :preview-max-seconds="30"
                 :show-download="order.canDownload"
                 :downloading-key="downloadingKey"
                 @download="(v) => downloadVersion(order, v)"
               />
+            </div>
+
+            <div v-if="order.canDownload && order.lyrics" class="lyrics-block">
+              <div class="lyrics-header">
+                <h3>Letra completa</h3>
+                <button type="button" class="btn-copy-lyrics" @click="copyLyrics(order)">
+                  {{ copiedOrderId === order.orderId ? '✓ Copiado!' : '📋 Copiar letra' }}
+                </button>
+              </div>
+              <pre class="lyrics-text">{{ order.lyrics }}</pre>
             </div>
 
             <div v-if="order.needsPayment" class="payment-alert">
@@ -260,8 +296,8 @@ async function downloadVersion(order, version) {
               <button type="button" class="btn-pay" @click="goPay(order.orderId)">Finalizar pagamento</button>
             </div>
 
-            <div v-else-if="order.canDownload && orderVersions(order).length" class="download-block">
-              <p>✅ Pagamento confirmado! Baixe suas músicas completas acima.</p>
+            <div v-else-if="order.canDownload" class="download-block">
+              <p>✅ Pagamento confirmado! Ouça, baixe suas 2 versões e copie a letra acima.</p>
             </div>
 
             <div v-else-if="['pending', 'generating_lyrics', 'generating_music'].includes(order.status)" class="progress-alert">
@@ -559,6 +595,52 @@ h1 {
 }
 
 .preview-block { margin-bottom: 12px; }
+
+.lyrics-block {
+  margin: 16px 0 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #f7f9ff;
+  border: 1px solid #daeaf5;
+}
+
+.lyrics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.lyrics-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #0d2137;
+}
+
+.btn-copy-lyrics {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #00c9d4, #0066a8);
+  color: white;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.lyrics-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: #4a6a80;
+  max-height: 320px;
+  overflow-y: auto;
+}
 
 .sr-only-audio {
   position: absolute;

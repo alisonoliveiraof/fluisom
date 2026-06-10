@@ -142,7 +142,8 @@ export async function submitMusicStep(req, res, next) {
 }
 
 function mapOrderForClient(order) {
-  const versions = mapVersionsForClient(order)
+  const isPaid = order.payment_status === 'paid'
+  const versions = mapVersionsForClient(order, { includeFullAudio: isPaid })
   const primary = versions[0]
   return {
     orderId: order.id,
@@ -151,15 +152,16 @@ function mapOrderForClient(order) {
     statusLabel: orderStatusLabel(order.status),
     musicTitle: order.music_title,
     previewAudioUrl: primary?.previewAudioUrl || order.preview_audio_url,
-    fullAudioUrl: primary?.fullAudioUrl || order.full_audio_url,
+    fullAudioUrl: isPaid ? primary?.fullAudioUrl || order.full_audio_url : null,
     coverImageUrl: primary?.coverImageUrl || order.cover_image_url,
     versions,
+    lyrics: isPaid ? order.generated_lyrics || null : null,
     paymentStatus: order.payment_status || 'unpaid',
     paymentAmount: Number(order.payment_amount || 47.9),
     createdAt: order.created_at,
     canPreview: versions.some((v) => v.previewAudioUrl) && ['music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered'].includes(order.status),
-    canDownload: order.payment_status === 'paid' && versions.some((v) => v.fullAudioUrl),
-    needsPayment: ['music_ready', 'preview_shown', 'payment_pending'].includes(order.status) && order.payment_status !== 'paid',
+    canDownload: isPaid && versions.some((v) => v.fullAudioUrl),
+    needsPayment: ['music_ready', 'preview_shown', 'payment_pending'].includes(order.status) && !isPaid,
   }
 }
 
