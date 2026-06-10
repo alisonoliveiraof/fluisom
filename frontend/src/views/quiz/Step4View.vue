@@ -14,7 +14,6 @@ const {
   generationStatus,
   previewData,
   previewLoading,
-  honoredDisplay,
 } = useQuiz()
 
 const canContinue = computed(() =>
