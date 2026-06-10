@@ -214,7 +214,7 @@ export async function listOrdersByEmail(email) {
   const { data, error } = await supabase
     .from('quiz_orders')
     .select(
-      'id, created_at, honored_name, status, music_title, preview_audio_url, full_audio_url, cover_image_url, payment_status, payment_amount, email, full_name',
+      'id, created_at, honored_name, status, music_title, music_versions, suno_raw_response, preview_audio_url, full_audio_url, cover_image_url, payment_status, payment_amount, email, full_name, suno_clip_id, music_duration_seconds',
     )
     .ilike('email', normalized)
     .order('created_at', { ascending: false })

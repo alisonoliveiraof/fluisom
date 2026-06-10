@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS quiz_orders (
   music_duration_seconds INTEGER,
   music_title VARCHAR(255),
   music_tags TEXT,
+  music_versions JSONB,
 
   payment_method VARCHAR(20),
   payment_status VARCHAR(20) DEFAULT 'unpaid',

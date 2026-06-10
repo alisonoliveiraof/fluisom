@@ -2,66 +2,109 @@ import {
   submitMusicGeneration,
   pollUntilComplete,
   getMusicGenerationDetails,
-  pickBestClip,
+  getAllClips,
   getClipAudioUrl,
   getClipImageUrl,
   isSunoComplete,
   isSunoStreamReady,
 } from '../services/suno.service.js'
 import { withRetry } from '../services/openai.service.js'
-import { uploadAudioFromUrl, uploadCoverFromUrl } from '../services/storage.service.js'
+import { uploadAudioFromUrl, uploadCoverFromUrl, isStoredAudioValid } from '../services/storage.service.js'
 import { buildMusicTitle, getGenreStyle } from '../utils/prompt.builder.js'
+import { buildVersionTitle, normalizeStoredVersions } from '../utils/musicVersions.js'
 import { getOrderById, updateOrder, insertGenerationLog } from '../services/supabase.service.js'
 import { env } from '../config/env.js'
 const isServerless = () => process.env.VERCEL === '1'
 
-export async function finalizeMusicFromDetails(orderId, details, { title, style } = {}) {
-  const order = await getOrderById(orderId)
-  const clip = pickBestClip(details)
-  if (!clip) throw new Error('Suno não retornou faixas de áudio')
-
-  const resolvedTitle = title || order.music_title || buildMusicTitle(order)
-  const resolvedStyle = style || order.music_tags || getGenreStyle(order.genre)
-
+async function storeClipVersion(orderId, clip, version, details, resolvedStyle) {
   const streamUrl = getClipAudioUrl(clip, true)
   const fullUrl = getClipAudioUrl(clip, false)
   const coverUrl = getClipImageUrl(clip)
+  const previewSourceUrl = fullUrl || streamUrl
 
-  let previewStoredUrl = streamUrl
-  let fullStoredUrl = fullUrl
+  let previewStoredUrl = previewSourceUrl
+  let fullStoredUrl = fullUrl || streamUrl
   let coverStoredUrl = coverUrl
 
   try {
-    if (streamUrl) previewStoredUrl = await uploadAudioFromUrl(streamUrl, orderId, 'preview')
-    if (fullUrl && isSunoComplete(details.status)) {
-      fullStoredUrl = await uploadAudioFromUrl(fullUrl, orderId, 'full')
+    if (previewSourceUrl) {
+      previewStoredUrl = await uploadAudioFromUrl(previewSourceUrl, orderId, 'preview', version)
     }
-    if (coverUrl) coverStoredUrl = await uploadCoverFromUrl(coverUrl, orderId)
+    if (fullUrl && isSunoComplete(details.status)) {
+      fullStoredUrl = await uploadAudioFromUrl(fullUrl, orderId, 'full', version)
+    } else if (!fullStoredUrl && previewStoredUrl) {
+      fullStoredUrl = previewStoredUrl
+    }
+    if (coverUrl) coverStoredUrl = await uploadCoverFromUrl(coverUrl, orderId, version)
   } catch (storageErr) {
-    console.warn('[FLUISOM] Falha no storage, usando URLs Suno:', storageErr.message)
+    console.warn(`[FLUISOM] Falha no storage v${version}, usando URLs Suno:`, storageErr.message)
+    previewStoredUrl = fullUrl || streamUrl
+    fullStoredUrl = fullUrl || streamUrl
   }
 
-  const updated = await updateOrder(orderId, {
-    status: 'music_ready',
-    suno_status: details.status,
-    suno_clip_id: clip.id,
-    suno_raw_response: details,
+  return {
+    version,
     preview_audio_url: previewStoredUrl,
     full_audio_url: fullStoredUrl,
-    audio_stored_url: fullStoredUrl,
     cover_image_url: coverStoredUrl,
-    music_duration_seconds: clip.duration ? Math.round(clip.duration) : null,
-    music_title: clip.title || resolvedTitle,
+    duration: clip.duration ? Math.round(clip.duration) : null,
+    suno_clip_id: clip.id,
     music_tags: clip.tags || resolvedStyle,
+  }
+}
+
+export async function finalizeMusicFromDetails(orderId, details, { title, style } = {}) {
+  const order = await getOrderById(orderId)
+  const clips = getAllClips(details, 2)
+  if (!clips.length) throw new Error('Suno não retornou faixas de áudio')
+
+  const resolvedStyle = style || order.music_tags || getGenreStyle(order.genre)
+  const honoredName = order.honored_name?.trim() || 'você'
+
+  const storedVersions = []
+  for (let i = 0; i < clips.length; i++) {
+    const version = i + 1
+    const clip = clips[i]
+    const entry = await storeClipVersion(orderId, clip, version, details, resolvedStyle)
+    entry.title = buildVersionTitle(honoredName, version)
+    storedVersions.push(entry)
+  }
+
+  const primary = storedVersions[0]
+  const baseTitle = title || order.music_title || buildMusicTitle(order)
+
+  const payload = {
+    status: 'music_ready',
+    suno_status: details.status,
+    suno_clip_id: primary.suno_clip_id,
+    suno_raw_response: { ...details, fluisomVersions: storedVersions },
+    music_versions: storedVersions,
+    preview_audio_url: primary.preview_audio_url,
+    full_audio_url: primary.full_audio_url,
+    audio_stored_url: primary.full_audio_url,
+    cover_image_url: primary.cover_image_url,
+    music_duration_seconds: primary.duration,
+    music_title: baseTitle,
+    music_tags: primary.music_tags || resolvedStyle,
     music_generation_completed_at: new Date().toISOString(),
-  })
+  }
+
+  let updated
+  try {
+    updated = await updateOrder(orderId, payload)
+  } catch (err) {
+    if (!String(err.message).includes('music_versions')) throw err
+    console.warn('[FLUISOM] Coluna music_versions ausente — usando fluisomVersions em suno_raw_response')
+    const { music_versions: _mv, ...fallback } = payload
+    updated = await updateOrder(orderId, fallback)
+  }
 
   await insertGenerationLog({
     order_id: orderId,
     step: 'music_finalize',
     status: 'success',
-    message: 'Música gerada e armazenada',
-    payload: { clipId: clip.id, status: details.status },
+    message: `${storedVersions.length} versão(ões) gerada(s) e armazenada(s)`,
+    payload: { clipIds: storedVersions.map((v) => v.suno_clip_id), status: details.status },
   })
 
   return updated
@@ -87,17 +130,59 @@ export async function pollAndFinalizeMusic(orderId, taskId, meta = {}) {
   return finalizeMusicFromDetails(orderId, details, meta)
 }
 
-export async function tryFinalizeFromSunoTask(orderId, taskId, meta = {}) {
+const READY_STATUSES = ['music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered']
+
+export async function tryFinalizeFromSunoTask(orderId, taskId, meta = {}, { force = false } = {}) {
+  const order = await getOrderById(orderId)
   const details = await getMusicGenerationDetails(taskId)
   const status = details.status
 
   await updateOrder(orderId, { suno_status: status })
 
   if (isSunoComplete(status) || (isSunoStreamReady(status) && details.response?.sunoData?.length)) {
+    const clips = getAllClips(details, 2)
+    const existing = normalizeStoredVersions(order).length
+    if (!force && READY_STATUSES.includes(order.status) && existing >= clips.length) {
+      return order
+    }
     return finalizeMusicFromDetails(orderId, details, meta)
   }
 
   return null
+}
+
+export async function ensureAllMusicVersions(order, meta = {}) {
+  if (!order?.suno_task_id) return order
+
+  const versions = normalizeStoredVersions(order)
+  const existing = versions.length
+
+  let previewsValid = true
+  if (existing > 0) {
+    const checks = await Promise.all(
+      versions.map((v) => isStoredAudioValid(v.preview_audio_url || v.previewAudioUrl)),
+    )
+    previewsValid = checks.every(Boolean)
+  }
+
+  const needsSync =
+    order.status === 'generating_music' ||
+    (READY_STATUSES.includes(order.status) && existing < 2) ||
+    (READY_STATUSES.includes(order.status) && existing >= 1 && !previewsValid)
+
+  if (!needsSync) return order
+
+  const result = await tryFinalizeFromSunoTask(
+    order.id,
+    order.suno_task_id,
+    {
+      title: meta.title || order.music_title || buildMusicTitle(order),
+      style: meta.style || order.music_tags || getGenreStyle(order.genre),
+    },
+    { force: !previewsValid },
+  )
+
+  return result || (await getOrderById(order.id))
 }
 
 export async function generateMusicForOrder(orderId) {

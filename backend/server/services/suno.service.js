@@ -85,10 +85,13 @@ export async function pollUntilComplete(taskId, { onProgress } = {}) {
   throw new Error('Timeout aguardando geração Suno')
 }
 
-export function pickBestClip(details) {
+export function getAllClips(details, max = 2) {
   const clips = details?.response?.sunoData || []
-  if (!clips.length) return null
-  return clips[0]
+  return clips.slice(0, max)
+}
+
+export function pickBestClip(details) {
+  return getAllClips(details, 1)[0] || null
 }
 
 export function getClipAudioUrl(clip, preferStream = false) {

@@ -10,16 +10,24 @@ export function getAudioExtension(url) {
   return 'mp3'
 }
 
-export function buildMusicFileName(honoredName, url) {
+export function buildMusicFileName(honoredName, url, version) {
   const name = sanitizeFileName(honoredName)
   const ext = getAudioExtension(url)
+  if (version && version > 1) {
+    return `Especial para ${name} - Versão ${version}.${ext}`
+  }
   return `Especial para ${name}.${ext}`
 }
 
-export async function downloadMusicFile({ url, honoredName }) {
+export function buildVersionDisplayTitle(honoredName, version) {
+  const name = String(honoredName || 'você').trim() || 'você'
+  return `Música Especial para ${name} - Versão ${version}`
+}
+
+export async function downloadMusicFile({ url, honoredName, version }) {
   if (!url) return
 
-  const fileName = buildMusicFileName(honoredName, url)
+  const fileName = buildMusicFileName(honoredName, url, version)
 
   try {
     const res = await fetch(url)

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useQuiz } from '../../composables/useQuiz'
 import VturbPlayer from '../../components/VturbPlayer.vue'
+import MusicVersionList from '../../components/MusicVersionList.vue'
 
 const {
   honoredDisplay,
@@ -12,17 +13,32 @@ const {
   generationError,
   generationStatus,
   previewData,
-  previewAudioEl,
   previewLoading,
-  toggleAudio,
-  audioPlaying,
+  honoredDisplay,
 } = useQuiz()
 
 const canContinue = computed(() =>
   ['music_ready', 'preview_shown'].includes(generationStatus.value) || !!previewData.value,
 )
 
-const musicReady = computed(() => !!previewData.value?.previewAudioUrl)
+const musicReady = computed(() => {
+  const versions = previewData.value?.versions
+  if (versions?.length) return versions.some((v) => v.previewAudioUrl)
+  return !!previewData.value?.previewAudioUrl
+})
+
+const previewVersions = computed(() => {
+  if (previewData.value?.versions?.length) return previewData.value.versions
+  if (previewData.value?.previewAudioUrl) {
+    return [{
+      version: 1,
+      title: previewData.value.musicTitle || `Música Especial para ${honoredDisplay.value} - Versão 1`,
+      previewAudioUrl: previewData.value.previewAudioUrl,
+      coverImageUrl: previewData.value.coverImageUrl,
+    }]
+  }
+  return []
+})
 </script>
 
 <template>
@@ -38,19 +54,16 @@ const musicReady = computed(() => !!previewData.value?.previewAudioUrl)
       <p v-if="previewLoading" class="progress-hint">Carregando sua prévia exclusiva…</p>
     </div>
 
-    <audio
-      v-if="previewData?.previewAudioUrl"
-      ref="previewAudioEl"
-      :src="previewData.previewAudioUrl"
-      preload="metadata"
-    />
-
     <div v-if="musicReady" class="preview-ready-card">
-      <p class="preview-ready-title">🎧 Sua prévia está pronta!</p>
-      <p class="preview-ready-desc">Ouça um trecho da música antes de continuar.</p>
-      <button type="button" class="btn-preview-play" @click="toggleAudio">
-        {{ audioPlaying ? '⏸ Pausar prévia' : '▶ Ouvir prévia agora' }}
-      </button>
+      <p class="preview-ready-title">🎧 {{ previewVersions.length > 1 ? 'Suas prévias estão prontas!' : 'Sua prévia está pronta!' }}</p>
+      <p class="preview-ready-desc">
+        {{ previewVersions.length > 1 ? 'A Suno criou 2 versões — ouça e escolha sua favorita.' : 'Ouça um trecho da música antes de continuar.' }}
+      </p>
+      <MusicVersionList
+        :versions="previewVersions"
+        :honored-name="honoredDisplay"
+        compact
+      />
     </div>
 
     <div v-else class="bounce-icon">🎶</div>

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { generateLyricsForOrder } from './lyrics.controller.js'
-import { generateMusicForOrder, tryFinalizeFromSunoTask } from './music.controller.js'
+import { generateMusicForOrder, ensureAllMusicVersions } from './music.controller.js'
 import { buildMusicTitle, getGenreStyle } from '../utils/prompt.builder.js'
 import {
   createOrder,
@@ -11,6 +11,7 @@ import {
   listOrdersByEmail,
 } from '../services/supabase.service.js'
 import { getLyricsPreview } from '../utils/prompt.builder.js'
+import { mapVersionsForClient } from '../utils/musicVersions.js'
 import { orderStatusToProgress, orderStatusLabel } from '../utils/status.mapper.js'
 
 export async function startQuiz(req, res, next) {
@@ -141,20 +142,23 @@ export async function submitMusicStep(req, res, next) {
 }
 
 function mapOrderForClient(order) {
+  const versions = mapVersionsForClient(order)
+  const primary = versions[0]
   return {
     orderId: order.id,
     honoredName: order.honored_name,
     status: order.status,
     statusLabel: orderStatusLabel(order.status),
     musicTitle: order.music_title,
-    previewAudioUrl: order.preview_audio_url,
-    fullAudioUrl: order.full_audio_url,
-    coverImageUrl: order.cover_image_url,
+    previewAudioUrl: primary?.previewAudioUrl || order.preview_audio_url,
+    fullAudioUrl: primary?.fullAudioUrl || order.full_audio_url,
+    coverImageUrl: primary?.coverImageUrl || order.cover_image_url,
+    versions,
     paymentStatus: order.payment_status || 'unpaid',
     paymentAmount: Number(order.payment_amount || 47.9),
     createdAt: order.created_at,
-    canPreview: !!order.preview_audio_url && ['music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered'].includes(order.status),
-    canDownload: order.payment_status === 'paid' && !!order.full_audio_url,
+    canPreview: versions.some((v) => v.previewAudioUrl) && ['music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered'].includes(order.status),
+    canDownload: order.payment_status === 'paid' && versions.some((v) => v.fullAudioUrl),
     needsPayment: ['music_ready', 'preview_shown', 'payment_pending'].includes(order.status) && order.payment_status !== 'paid',
   }
 }
@@ -182,7 +186,18 @@ export async function getMyOrders(req, res, next) {
       }
     }
 
-    const orders = await listOrdersByEmail(normalizedEmail)
+    let orders = await listOrdersByEmail(normalizedEmail)
+
+    orders = await Promise.all(
+      orders.map(async (order) => {
+        try {
+          return await syncMusicFromSunoIfNeeded(order)
+        } catch {
+          return order
+        }
+      }),
+    )
+
     res.json({
       email: normalizedEmail,
       orders: orders.map(mapOrderForClient),
@@ -195,17 +210,23 @@ export async function getMyOrders(req, res, next) {
 const SUNO_SYNC_MIN_MS = 8000
 
 async function syncMusicFromSunoIfNeeded(order) {
-  if (order.status !== 'generating_music' || !order.suno_task_id) return order
+  if (!order.suno_task_id) return order
+
+  const existing = mapVersionsForClient(order).length
+  const needsSync =
+    order.status === 'generating_music' ||
+    (['music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered'].includes(order.status) && existing < 2)
+
+  if (!needsSync) return order
 
   const sinceUpdate = Date.now() - new Date(order.updated_at || order.music_generation_started_at).getTime()
-  if (sinceUpdate < SUNO_SYNC_MIN_MS) return order
+  if (order.status === 'generating_music' && sinceUpdate < SUNO_SYNC_MIN_MS) return order
 
   try {
-    const finalized = await tryFinalizeFromSunoTask(order.id, order.suno_task_id, {
+    return await ensureAllMusicVersions(order, {
       title: order.music_title || buildMusicTitle(order),
       style: order.music_tags || getGenreStyle(order.genre),
     })
-    return finalized || (await getOrderById(order.id))
   } catch (err) {
     console.warn('[FLUISOM] Falha ao sincronizar Suno:', err.message)
     return order
@@ -217,14 +238,16 @@ export async function getQuizStatus(req, res, next) {
     const order = await syncMusicFromSunoIfNeeded(await getOrderById(req.params.orderId))
     const progress = orderStatusToProgress(order.status, order.suno_status)
 
+    const versions = mapVersionsForClient(order)
     res.json({
       orderId: order.id,
       status: order.status,
       progress,
       statusLabel: orderStatusLabel(order.status),
-      previewAudioUrl: order.preview_audio_url || null,
-      coverImageUrl: order.cover_image_url || null,
+      previewAudioUrl: versions[0]?.previewAudioUrl || order.preview_audio_url || null,
+      coverImageUrl: versions[0]?.coverImageUrl || order.cover_image_url || null,
       musicTitle: order.music_title || null,
+      versions,
       errorMessage: order.error_message || null,
     })
   } catch (err) {
@@ -248,12 +271,14 @@ export async function getQuizPreview(req, res, next) {
       await updateOrder(order.id, { status: 'preview_shown' })
     }
 
+    const versions = mapVersionsForClient(order)
     res.json({
       orderId: order.id,
       honoredName: order.honored_name,
-      previewAudioUrl: order.preview_audio_url,
-      coverImageUrl: order.cover_image_url,
+      previewAudioUrl: versions[0]?.previewAudioUrl || order.preview_audio_url,
+      coverImageUrl: versions[0]?.coverImageUrl || order.cover_image_url,
       musicTitle: order.music_title,
+      versions,
       genre: order.genre,
       voice: order.voice,
       relationship: order.relationship,

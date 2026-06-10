@@ -1,9 +1,10 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getMyOrders } from '../services/api.service'
 import { getSavedOrderId } from '../quiz/quizState'
 import { downloadMusicFile } from '../utils/musicDownload'
+import MusicVersionList from '../components/MusicVersionList.vue'
 import { LOGO_URL } from '../constants'
 
 const SESSION_KEY = 'fluisom_orders_session'
@@ -16,9 +17,7 @@ const loggedEmail = ref('')
 const orders = ref([])
 const loading = ref(false)
 const error = ref('')
-const playingId = ref(null)
-const downloadingId = ref(null)
-const audioEls = ref({})
+const downloadingKey = ref(null)
 
 const isLoggedIn = computed(() => !!loggedEmail.value)
 
@@ -99,8 +98,6 @@ async function fetchOrders() {
 }
 
 function logout() {
-  Object.values(audioEls.value).forEach((el) => el?.pause())
-  playingId.value = null
   clearSession()
   loggedEmail.value = ''
   email.value = ''
@@ -131,57 +128,36 @@ function goHome() {
   router.push('/pv')
 }
 
-async function downloadMusic(order) {
-  const url = order.fullAudioUrl
+function orderVersions(order) {
+  if (order.versions?.length) return order.versions
+  if (order.previewAudioUrl) {
+    return [{
+      version: 1,
+      title: `Música Especial para ${order.honoredName?.trim() || 'você'} - Versão 1`,
+      previewAudioUrl: order.previewAudioUrl,
+      fullAudioUrl: order.fullAudioUrl,
+      coverImageUrl: order.coverImageUrl,
+    }]
+  }
+  return []
+}
+
+async function downloadVersion(order, version) {
+  const url = version.fullAudioUrl || version.previewAudioUrl
   if (!url) return
 
-  downloadingId.value = order.orderId
+  const key = `${order.orderId}-v${version.version}`
+  downloadingKey.value = key
   try {
-    await downloadMusicFile({ url, honoredName: order.honoredName })
+    await downloadMusicFile({
+      url,
+      honoredName: order.honoredName,
+      version: version.version,
+    })
   } finally {
-    downloadingId.value = null
+    downloadingKey.value = null
   }
 }
-
-function setAudioEl(orderId, el) {
-  if (el) audioEls.value[orderId] = el
-  else delete audioEls.value[orderId]
-}
-
-function pauseAllExcept(orderId) {
-  for (const [id, el] of Object.entries(audioEls.value)) {
-    if (id !== orderId && el) {
-      el.pause()
-      el.currentTime = 0
-    }
-  }
-}
-
-function togglePlay(order) {
-  const id = order.orderId
-  const el = audioEls.value[id]
-  if (!el) return
-
-  if (playingId.value === id) {
-    el.pause()
-    playingId.value = null
-    return
-  }
-
-  pauseAllExcept(id)
-  playingId.value = id
-  el.play().catch(() => {
-    playingId.value = null
-  })
-}
-
-function onAudioEnded(orderId) {
-  if (playingId.value === orderId) playingId.value = null
-}
-
-onBeforeUnmount(() => {
-  Object.values(audioEls.value).forEach((el) => el?.pause())
-})
 </script>
 
 <template>
@@ -257,16 +233,8 @@ onBeforeUnmount(() => {
         <div v-else class="orders-list">
           <article v-for="order in orders" :key="order.orderId" class="order-card">
             <div class="order-top">
-              <img
-                v-if="order.coverImageUrl"
-                :src="order.coverImageUrl"
-                :alt="order.musicTitle || order.honoredName"
-                class="order-cover"
-              />
-              <div v-else class="order-cover placeholder">🎵</div>
-              <div class="order-info">
-                <h2>{{ order.musicTitle || `Música para ${order.honoredName}` }}</h2>
-                <p class="order-honored">Para: <strong>{{ order.honoredName }}</strong></p>
+              <div class="order-info order-info-full">
+                <h2>Pedido para <strong>{{ order.honoredName?.trim() }}</strong></h2>
                 <p class="order-date">{{ formatDate(order.createdAt) }}</p>
                 <span
                   class="status-badge"
@@ -277,22 +245,14 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div v-if="order.canPreview && order.previewAudioUrl" class="preview-block">
-              <audio
-                :ref="(el) => setAudioEl(order.orderId, el)"
-                :src="order.previewAudioUrl"
-                preload="metadata"
-                class="sr-only-audio"
-                @ended="onAudioEnded(order.orderId)"
+            <div v-if="order.canPreview && orderVersions(order).length" class="preview-block">
+              <MusicVersionList
+                :versions="orderVersions(order)"
+                :honored-name="order.honoredName"
+                :show-download="order.canDownload"
+                :downloading-key="downloadingKey"
+                @download="(v) => downloadVersion(order, v)"
               />
-              <button
-                type="button"
-                class="btn-play"
-                :class="{ playing: playingId === order.orderId }"
-                @click="togglePlay(order)"
-              >
-                {{ playingId === order.orderId ? '⏸ Pausar prévia' : '▶ Ouvir prévia' }}
-              </button>
             </div>
 
             <div v-if="order.needsPayment" class="payment-alert">
@@ -300,17 +260,8 @@ onBeforeUnmount(() => {
               <button type="button" class="btn-pay" @click="goPay(order.orderId)">Finalizar pagamento</button>
             </div>
 
-            <div v-else-if="order.canDownload && order.fullAudioUrl" class="download-block">
-              <p>✅ Pagamento confirmado! Baixe sua música completa:</p>
-              <p class="download-filename">📁 Especial para {{ order.honoredName }}</p>
-              <button
-                type="button"
-                class="btn-download"
-                :disabled="downloadingId === order.orderId"
-                @click="downloadMusic(order)"
-              >
-                {{ downloadingId === order.orderId ? 'Baixando…' : '⬇ Baixar música' }}
-              </button>
+            <div v-else-if="order.canDownload && orderVersions(order).length" class="download-block">
+              <p>✅ Pagamento confirmado! Baixe suas músicas completas acima.</p>
             </div>
 
             <div v-else-if="['pending', 'generating_lyrics', 'generating_music'].includes(order.status)" class="progress-alert">
@@ -564,6 +515,10 @@ h1 {
   display: flex;
   gap: 16px;
   margin-bottom: 16px;
+}
+
+.order-info-full {
+  width: 100%;
 }
 
 .order-cover {

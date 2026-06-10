@@ -1,15 +1,11 @@
 <script setup>
 import { useQuiz } from '../../composables/useQuiz'
+import MusicVersionList from '../../components/MusicVersionList.vue'
+import { computed } from 'vue'
 
 const {
   form,
   honoredDisplay,
-  waveHeights,
-  playedBars,
-  audioPlaying,
-  audioProgress,
-  audioTimeDisplay,
-  toggleAudio,
   guarantees,
   testimonials,
   canProceed,
@@ -17,14 +13,22 @@ const {
   goBack,
   onWhatsappInput,
   previewData,
-  previewAudioEl,
   previewLoading,
   generationError,
 } = useQuiz()
 
-function onPreviewEnded() {
-  audioPlaying.value = false
-}
+const previewVersions = computed(() => {
+  if (previewData.value?.versions?.length) return previewData.value.versions
+  if (previewData.value?.previewAudioUrl) {
+    return [{
+      version: 1,
+      title: previewData.value.musicTitle || `Música Especial para ${honoredDisplay.value} - Versão 1`,
+      previewAudioUrl: previewData.value.previewAudioUrl,
+      coverImageUrl: previewData.value.coverImageUrl,
+    }]
+  }
+  return []
+})
 </script>
 
 <template>
@@ -42,46 +46,15 @@ function onPreviewEnded() {
 
     <template v-else-if="previewData">
       <div class="preview-hero">
-        <div v-if="previewData.coverImageUrl" class="preview-cover-wrap">
-          <img :src="previewData.coverImageUrl" :alt="previewData.musicTitle || 'Capa da música'" class="preview-cover" />
-        </div>
-        <div v-else class="preview-cover-placeholder">🎵</div>
-
-        <p v-if="previewData.musicTitle" class="preview-title">{{ previewData.musicTitle }}</p>
         <p class="preview-subtitle">Prévia para {{ previewData.honoredName || honoredDisplay }}</p>
+        <p v-if="previewVersions.length > 1" class="preview-versions-hint">
+          🎵 Pague 1, Leve 2: Ouça as {{ previewVersions.length }} versões criadas pela Fluisom que você receberá:
+        </p>
 
-        <audio
-          v-if="previewData.previewAudioUrl"
-          ref="previewAudioEl"
-          :src="previewData.previewAudioUrl"
-          preload="metadata"
-          @ended="onPreviewEnded"
+        <MusicVersionList
+          :versions="previewVersions"
+          :honored-name="previewData.honoredName || honoredDisplay"
         />
-
-        <div class="audio-player preview-player">
-          <div class="waveform">
-            <span
-              v-for="(h, i) in waveHeights"
-              :key="i"
-              class="wave-bar"
-              :class="{ played: i < playedBars }"
-              :style="{ height: h + 'px' }"
-            />
-          </div>
-          <div class="audio-controls">
-            <button type="button" class="play-btn play-btn-lg" @click="toggleAudio">
-              {{ audioPlaying ? '⏸' : '▶' }}
-            </button>
-            <div class="audio-info">
-              <span class="audio-name">Ouça sua prévia exclusiva</span>
-              <span class="audio-time">{{ audioTimeDisplay }}</span>
-            </div>
-          </div>
-          <div class="audio-progress-track">
-            <div class="audio-progress-fill" :style="{ width: audioProgress + '%' }" />
-          </div>
-          <p class="preview-hint">🔊 Toque em play para ouvir como ficou a sua música</p>
-        </div>
 
         <div v-if="previewData.lyricsPreview" class="lyrics-preview">
           <p class="lyrics-label">Trecho da letra</p>
@@ -243,6 +216,13 @@ function onPreviewEnded() {
   font-size: 1.2rem;
   color: #0099b8;
   margin-bottom: 4px;
+}
+
+.preview-versions-hint {
+  text-align: center;
+  color: #4a6a80;
+  font-size: 0.92rem;
+  margin: 0 0 16px;
 }
 
 .preview-subtitle {
