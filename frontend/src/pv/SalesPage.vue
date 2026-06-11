@@ -113,7 +113,7 @@ let sectionObserver = null
 let counterObserver = null
 
 function navigateToQuiz() {
-  router.push('/passo/1')
+  router.push({ path: '/passo/1', query: { novo: '1' } })
 }
 
 function navigateToOrders() {

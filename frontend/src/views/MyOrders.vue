@@ -250,7 +250,7 @@ async function copyLyrics(order) {
           <p>Nenhum pedido encontrado para <strong>{{ loggedEmail }}</strong>.</p>
           <p class="empty-hint">
             Verifique o email ou
-            <button type="button" class="link-btn" @click="router.push('/passo/1')">crie sua primeira música</button>.
+            <button type="button" class="link-btn" @click="router.push({ path: '/passo/1', query: { novo: '1' } })">crie sua primeira música</button>.
           </p>
         </div>
 

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { generateLyricsForOrder } from './lyrics.controller.js'
-import { generateMusicForOrder, ensureAllMusicVersions } from './music.controller.js'
+import { generateMusicForOrder, ensureAllMusicVersions, refreshOrderSunoStatus } from './music.controller.js'
 import { buildMusicTitle, getGenreStyle } from '../utils/prompt.builder.js'
 import {
   createOrder,
@@ -211,7 +211,7 @@ export async function getMyOrders(req, res, next) {
 
 const SUNO_SYNC_MIN_MS = 8000
 
-async function syncMusicFromSunoIfNeeded(order) {
+async function syncMusicFromSunoIfNeeded(order, { blocking = true } = {}) {
   if (!order.suno_task_id) return order
 
   const existing = mapVersionsForClient(order).length
@@ -225,10 +225,11 @@ async function syncMusicFromSunoIfNeeded(order) {
   if (order.status === 'generating_music' && sinceUpdate < SUNO_SYNC_MIN_MS) return order
 
   try {
-    return await ensureAllMusicVersions(order, {
-      title: order.music_title || buildMusicTitle(order),
-      style: order.music_tags || getGenreStyle(order.genre),
-    })
+    const refreshed = await refreshOrderSunoStatus(order)
+    return await ensureAllMusicVersions(refreshed, {
+      title: refreshed.music_title || buildMusicTitle(refreshed),
+      style: refreshed.music_tags || getGenreStyle(refreshed.genre),
+    }, { blocking })
   } catch (err) {
     console.warn('[FLUISOM] Falha ao sincronizar Suno:', err.message)
     return order
@@ -237,7 +238,7 @@ async function syncMusicFromSunoIfNeeded(order) {
 
 export async function getQuizStatus(req, res, next) {
   try {
-    const order = await syncMusicFromSunoIfNeeded(await getOrderById(req.params.orderId))
+    const order = await syncMusicFromSunoIfNeeded(await getOrderById(req.params.orderId), { blocking: false })
     const progress = orderStatusToProgress(order.status, order.suno_status)
 
     const versions = mapVersionsForClient(order)

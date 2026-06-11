@@ -74,6 +74,35 @@ function createQuiz() {
   let audioInterval = null
   let videoInterval = null
   let pollTimer = null
+  let pollInFlight = false
+
+  function isPersistedOrderId(id) {
+    return !!id && !String(id).startsWith('FS-')
+  }
+
+  function activeOrderId() {
+    const fromRoute = route.query.orderId
+    if (typeof fromRoute === 'string' && isPersistedOrderId(fromRoute)) return fromRoute
+    return isPersistedOrderId(orderId.value) ? orderId.value : null
+  }
+
+  function clearGenerationSession() {
+    clearPollTimer()
+    generationProgress.value = 0
+    generationStatus.value = 'pending'
+    generationStatusLabel.value = 'Preparando sua história...'
+    generationError.value = null
+    generationLoading.value = false
+    previewData.value = null
+    previewLoading.value = false
+  }
+
+  function beginNewQuizSession() {
+    clearGenerationSession()
+    orderId.value = 'FS-' + Math.random().toString(36).substr(2, 8).toUpperCase()
+    setPersistOrderId(null)
+    persistQuizNow()
+  }
 
   const currentStep = computed(() => Number(route.meta.step) || 1)
 
@@ -146,9 +175,12 @@ function createQuiz() {
   }
 
   async function pollGenerationStatus() {
-    if (!orderId.value) return
+    const id = activeOrderId()
+    if (!id || pollInFlight) return
+
+    pollInFlight = true
     try {
-      const status = await getQuizStatus(orderId.value)
+      const status = await getQuizStatus(id)
       generationProgress.value = Math.max(0, status.progress ?? 0)
       generationStatus.value = status.status
       generationStatusLabel.value = status.statusLabel || generationStatusLabel.value
@@ -162,6 +194,8 @@ function createQuiz() {
       }
     } catch (err) {
       generationError.value = err.message
+    } finally {
+      pollInFlight = false
     }
   }
 
@@ -172,10 +206,17 @@ function createQuiz() {
   }
 
   async function resumeGenerationIfNeeded() {
-    if (!orderId.value || generationLoading.value) return
+    const id = activeOrderId()
+    if (!id || generationLoading.value) return
+
+    if (id !== orderId.value) {
+      orderId.value = id
+      setPersistOrderId(id)
+      persistQuizNow()
+    }
 
     try {
-      const status = await getQuizStatus(orderId.value)
+      const status = await getQuizStatus(id)
       generationStatus.value = status.status
       generationProgress.value = status.progress ?? generationProgress.value
       generationStatusLabel.value = status.statusLabel || generationStatusLabel.value
@@ -193,7 +234,7 @@ function createQuiz() {
 
       if (status.status === 'lyrics_ready') {
         generationStatusLabel.value = '🎧 Enviando para produção musical...'
-        await submitQuizMusic(orderId.value)
+        await submitQuizMusic(id)
         startGenerationPolling()
         return
       }
@@ -206,9 +247,9 @@ function createQuiz() {
       if (status.status === 'pending') {
         generationLoading.value = true
         generationStatusLabel.value = '✍️ Compondo a letra da sua música...'
-        await generateQuizLyrics(orderId.value)
+        await generateQuizLyrics(id)
         generationStatusLabel.value = '🎧 Enviando para produção musical...'
-        await submitQuizMusic(orderId.value)
+        await submitQuizMusic(id)
         startGenerationPolling()
       }
     } catch (err) {
@@ -266,11 +307,10 @@ function createQuiz() {
 
   async function startGeneration() {
     if (!canProceed(3) || generationLoading.value) return
+
+    clearPollTimer()
+    clearGenerationSession()
     generationLoading.value = true
-    generationError.value = null
-    generationProgress.value = 0
-    generationStatus.value = 'pending'
-    generationStatusLabel.value = 'Preparando sua história...'
 
     try {
       const result = await startQuiz(form)
@@ -416,8 +456,6 @@ function createQuiz() {
 
   function resetQuiz() {
     resetQuizState()
-    orderId.value = 'FS-' + Math.random().toString(36).substr(2, 8).toUpperCase()
-    setPersistOrderId(orderId.value)
     audioPlaying.value = false
     audioProgress.value = 0
     audioLocked.value = true
@@ -425,16 +463,10 @@ function createQuiz() {
     videoProgress.value = 0
     cardFlipped.value = false
     showConfetti.value = false
-    generationProgress.value = 0
-    generationStatus.value = 'pending'
-    generationStatusLabel.value = 'Preparando sua história...'
-    generationError.value = null
-    generationLoading.value = false
-    previewData.value = null
     clearAudioInterval()
     clearVideoInterval()
-    clearPollTimer()
-    goToStep(1)
+    beginNewQuizSession()
+    router.push({ name: 'quiz-step-1', query: { novo: '1' } })
   }
 
   function maskCpf(value) {
@@ -512,10 +544,18 @@ function createQuiz() {
     () => route.meta.step,
     async (step) => {
       window.scrollTo({ top: 0, behavior: 'smooth' })
-      if (step === 4 && orderId.value && !pollTimer && !generationLoading.value) {
+
+      if (step === 1 && route.query.novo === '1') {
+        beginNewQuizSession()
+        const nextQuery = { ...route.query }
+        delete nextQuery.novo
+        router.replace({ name: route.name, query: nextQuery })
+      }
+
+      if (step === 4 && activeOrderId() && !pollTimer && !generationLoading.value) {
         resumeGenerationIfNeeded()
       }
-      if ((step === 5 || step === 6) && !previewData.value && orderId.value) {
+      if ((step === 5 || step === 6) && !previewData.value && activeOrderId()) {
         await loadPreview()
       }
       if (step === 6 && route.query.orderId && form.email) {

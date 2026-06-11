@@ -16,6 +16,22 @@ import { getOrderById, updateOrder, insertGenerationLog } from '../services/supa
 import { env } from '../config/env.js'
 const isServerless = () => process.env.VERCEL === '1'
 
+const finalizeLocks = new Set()
+
+export async function refreshOrderSunoStatus(order) {
+  if (!order?.suno_task_id) return order
+
+  try {
+    const details = await getMusicGenerationDetails(order.suno_task_id)
+    if (!details?.status || details.status === order.suno_status) return order
+
+    return await updateOrder(order.id, { suno_status: details.status })
+  } catch (err) {
+    console.warn('[FLUISOM] Falha ao atualizar status Suno:', err.message)
+    return order
+  }
+}
+
 async function storeClipVersion(orderId, clip, version, details, resolvedStyle) {
   const streamUrl = getClipAudioUrl(clip, true)
   const fullUrl = getClipAudioUrl(clip, false)
@@ -151,7 +167,19 @@ export async function tryFinalizeFromSunoTask(orderId, taskId, meta = {}, { forc
   return null
 }
 
-export async function ensureAllMusicVersions(order, meta = {}) {
+async function runFinalizeSync(order, meta = {}, { force = false } = {}) {
+  return tryFinalizeFromSunoTask(
+    order.id,
+    order.suno_task_id,
+    {
+      title: meta.title || order.music_title || buildMusicTitle(order),
+      style: meta.style || order.music_tags || getGenreStyle(order.genre),
+    },
+    { force },
+  )
+}
+
+export async function ensureAllMusicVersions(order, meta = {}, { blocking = true } = {}) {
   if (!order?.suno_task_id) return order
 
   const versions = normalizeStoredVersions(order)
@@ -172,16 +200,23 @@ export async function ensureAllMusicVersions(order, meta = {}) {
 
   if (!needsSync) return order
 
-  const result = await tryFinalizeFromSunoTask(
-    order.id,
-    order.suno_task_id,
-    {
-      title: meta.title || order.music_title || buildMusicTitle(order),
-      style: meta.style || order.music_tags || getGenreStyle(order.genre),
-    },
-    { force: !previewsValid },
-  )
+  const syncMeta = {
+    title: meta.title || order.music_title || buildMusicTitle(order),
+    style: meta.style || order.music_tags || getGenreStyle(order.genre),
+  }
 
+  if (!blocking) {
+    if (finalizeLocks.has(order.id)) return order
+
+    finalizeLocks.add(order.id)
+    void runFinalizeSync(order, syncMeta, { force: !previewsValid })
+      .catch((err) => console.warn('[FLUISOM] Finalize em background falhou:', err.message))
+      .finally(() => finalizeLocks.delete(order.id))
+
+    return order
+  }
+
+  const result = await runFinalizeSync(order, syncMeta, { force: !previewsValid })
   return result || (await getOrderById(order.id))
 }
 
