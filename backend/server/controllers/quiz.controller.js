@@ -1,6 +1,11 @@
 import { v4 as uuidv4 } from 'uuid'
 import { generateLyricsForOrder } from './lyrics.controller.js'
-import { generateMusicForOrder, ensureAllMusicVersions, refreshOrderSunoStatus } from './music.controller.js'
+import {
+  generateMusicForOrder,
+  ensureAllMusicVersions,
+  refreshOrderSunoStatus,
+  checkOrderNeedsSunoSync,
+} from './music.controller.js'
 import { buildMusicTitle, getGenreStyle } from '../utils/prompt.builder.js'
 import {
   createOrder,
@@ -214,11 +219,7 @@ const SUNO_SYNC_MIN_MS = 8000
 async function syncMusicFromSunoIfNeeded(order, { blocking = true } = {}) {
   if (!order.suno_task_id) return order
 
-  const existing = mapVersionsForClient(order).length
-  const needsSync =
-    order.status === 'generating_music' ||
-    (['music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered'].includes(order.status) && existing < 2)
-
+  const { needsSync } = await checkOrderNeedsSunoSync(order)
   if (!needsSync) return order
 
   const sinceUpdate = Date.now() - new Date(order.updated_at || order.music_generation_started_at).getTime()
@@ -238,7 +239,7 @@ async function syncMusicFromSunoIfNeeded(order, { blocking = true } = {}) {
 
 export async function getQuizStatus(req, res, next) {
   try {
-    const order = await syncMusicFromSunoIfNeeded(await getOrderById(req.params.orderId), { blocking: false })
+    const order = await syncMusicFromSunoIfNeeded(await getOrderById(req.params.orderId), { blocking: true })
     const progress = orderStatusToProgress(order.status, order.suno_status)
 
     const versions = mapVersionsForClient(order)

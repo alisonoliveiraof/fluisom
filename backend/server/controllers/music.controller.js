@@ -32,14 +32,25 @@ export async function refreshOrderSunoStatus(order) {
   }
 }
 
-async function storeClipVersion(orderId, clip, version, details, resolvedStyle) {
+function isSupabaseStorageUrl(url) {
+  return !!url && String(url).includes('supabase.co/storage')
+}
+
+function pickExistingVersionField(existingVersions, version, field) {
+  const match = existingVersions.find((v) => (v.version ?? 0) === version)
+  const value = match?.[field] || match?.[field.replace(/_([a-z])/g, (_, c) => c.toUpperCase())]
+  if (!value || !isSupabaseStorageUrl(value)) return null
+  return value
+}
+
+async function storeClipVersion(orderId, clip, version, details, resolvedStyle, existingVersions = []) {
   const streamUrl = getClipAudioUrl(clip, true)
   const fullUrl = getClipAudioUrl(clip, false)
   const coverUrl = getClipImageUrl(clip)
-  const previewSourceUrl = fullUrl || streamUrl
+  const previewSourceUrl = streamUrl || fullUrl
 
-  let previewStoredUrl = previewSourceUrl
-  let fullStoredUrl = fullUrl || streamUrl
+  let previewStoredUrl = null
+  let fullStoredUrl = null
   let coverStoredUrl = coverUrl
 
   try {
@@ -48,14 +59,27 @@ async function storeClipVersion(orderId, clip, version, details, resolvedStyle) 
     }
     if (fullUrl && isSunoComplete(details.status)) {
       fullStoredUrl = await uploadAudioFromUrl(fullUrl, orderId, 'full', version)
-    } else if (!fullStoredUrl && previewStoredUrl) {
+    } else if (previewStoredUrl) {
       fullStoredUrl = previewStoredUrl
     }
     if (coverUrl) coverStoredUrl = await uploadCoverFromUrl(coverUrl, orderId, version)
   } catch (storageErr) {
-    console.warn(`[FLUISOM] Falha no storage v${version}, usando URLs Suno:`, storageErr.message)
-    previewStoredUrl = fullUrl || streamUrl
-    fullStoredUrl = fullUrl || streamUrl
+    console.warn(`[FLUISOM] Falha no storage v${version}:`, storageErr.message)
+    if (previewStoredUrl) {
+      fullStoredUrl = fullStoredUrl || previewStoredUrl
+    }
+  }
+
+  if (!previewStoredUrl) {
+    previewStoredUrl = pickExistingVersionField(existingVersions, version, 'preview_audio_url')
+  }
+  if (!fullStoredUrl) {
+    fullStoredUrl =
+      pickExistingVersionField(existingVersions, version, 'full_audio_url') || previewStoredUrl
+  }
+  if (!coverStoredUrl || !isSupabaseStorageUrl(coverStoredUrl)) {
+    const existingCover = pickExistingVersionField(existingVersions, version, 'cover_image_url')
+    if (existingCover) coverStoredUrl = existingCover
   }
 
   return {
@@ -76,14 +100,20 @@ export async function finalizeMusicFromDetails(orderId, details, { title, style 
 
   const resolvedStyle = style || order.music_tags || getGenreStyle(order.genre)
   const honoredName = order.honored_name?.trim() || 'você'
+  const existingVersions = normalizeStoredVersions(order)
 
-  const storedVersions = []
-  for (let i = 0; i < clips.length; i++) {
-    const version = i + 1
-    const clip = clips[i]
-    const entry = await storeClipVersion(orderId, clip, version, details, resolvedStyle)
-    entry.title = buildVersionTitle(honoredName, version)
-    storedVersions.push(entry)
+  const storedVersions = await Promise.all(
+    clips.map(async (clip, i) => {
+      const version = i + 1
+      const entry = await storeClipVersion(orderId, clip, version, details, resolvedStyle, existingVersions)
+      entry.title = buildVersionTitle(honoredName, version)
+      return entry
+    }),
+  )
+
+  const hasAnyAudio = storedVersions.some((v) => v.preview_audio_url || v.full_audio_url)
+  if (!hasAnyAudio) {
+    throw new Error('Não foi possível armazenar nenhuma versão de áudio')
   }
 
   const primary = storedVersions[0]
@@ -148,6 +178,40 @@ export async function pollAndFinalizeMusic(orderId, taskId, meta = {}) {
 
 const READY_STATUSES = ['music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered']
 
+async function versionsNeedRepair(versions) {
+  if (!versions.length) return true
+
+  const previewChecks = await Promise.all(
+    versions.map((v) => isStoredAudioValid(v.preview_audio_url || v.previewAudioUrl)),
+  )
+  if (!previewChecks.every(Boolean)) return true
+
+  const fullChecks = await Promise.all(
+    versions.map((v) => {
+      const url = v.full_audio_url || v.fullAudioUrl
+      if (!isSupabaseStorageUrl(url)) return Promise.resolve(false)
+      return isStoredAudioValid(url)
+    }),
+  )
+  return !fullChecks.every(Boolean)
+}
+
+export async function checkOrderNeedsSunoSync(order) {
+  if (!order?.suno_task_id) return { needsSync: false, force: false }
+
+  const versions = normalizeStoredVersions(order)
+  const existing = versions.length
+  const repair = existing > 0 ? await versionsNeedRepair(versions) : false
+
+  const needsSync =
+    order.status === 'generating_music' ||
+    (READY_STATUSES.includes(order.status) && existing < 2) ||
+    (READY_STATUSES.includes(order.status) && repair) ||
+    (order.suno_status === 'FIRST_SUCCESS' && !isSunoComplete(order.suno_status))
+
+  return { needsSync, force: repair }
+}
+
 export async function tryFinalizeFromSunoTask(orderId, taskId, meta = {}, { force = false } = {}) {
   const order = await getOrderById(orderId)
   const details = await getMusicGenerationDetails(taskId)
@@ -159,7 +223,8 @@ export async function tryFinalizeFromSunoTask(orderId, taskId, meta = {}, { forc
     const clips = getAllClips(details, 2)
     const existing = normalizeStoredVersions(order).length
     if (!force && READY_STATUSES.includes(order.status) && existing >= clips.length) {
-      return order
+      const repair = await versionsNeedRepair(normalizeStoredVersions(order))
+      if (!repair) return order
     }
     return finalizeMusicFromDetails(orderId, details, meta)
   }
@@ -182,22 +247,7 @@ async function runFinalizeSync(order, meta = {}, { force = false } = {}) {
 export async function ensureAllMusicVersions(order, meta = {}, { blocking = true } = {}) {
   if (!order?.suno_task_id) return order
 
-  const versions = normalizeStoredVersions(order)
-  const existing = versions.length
-
-  let previewsValid = true
-  if (existing > 0) {
-    const checks = await Promise.all(
-      versions.map((v) => isStoredAudioValid(v.preview_audio_url || v.previewAudioUrl)),
-    )
-    previewsValid = checks.every(Boolean)
-  }
-
-  const needsSync =
-    order.status === 'generating_music' ||
-    (READY_STATUSES.includes(order.status) && existing < 2) ||
-    (READY_STATUSES.includes(order.status) && existing >= 1 && !previewsValid)
-
+  const { needsSync, force } = await checkOrderNeedsSunoSync(order)
   if (!needsSync) return order
 
   const syncMeta = {
@@ -209,14 +259,14 @@ export async function ensureAllMusicVersions(order, meta = {}, { blocking = true
     if (finalizeLocks.has(order.id)) return order
 
     finalizeLocks.add(order.id)
-    void runFinalizeSync(order, syncMeta, { force: !previewsValid })
+    void runFinalizeSync(order, syncMeta, { force })
       .catch((err) => console.warn('[FLUISOM] Finalize em background falhou:', err.message))
       .finally(() => finalizeLocks.delete(order.id))
 
     return order
   }
 
-  const result = await runFinalizeSync(order, syncMeta, { force: !previewsValid })
+  const result = await runFinalizeSync(order, syncMeta, { force })
   return result || (await getOrderById(order.id))
 }
 

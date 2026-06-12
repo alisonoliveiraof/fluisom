@@ -19,6 +19,7 @@ import {
   getRelationshipLabel,
   getGenreLabel,
   getSavedOrderId,
+  isPersistedOrderId,
   setPersistOrderId,
   persistQuizNow,
 } from '../quiz/quizState'
@@ -47,9 +48,11 @@ function createQuiz() {
   const router = useRouter()
   const route = useRoute()
 
-  const orderId = ref(getSavedOrderId() || 'FS-' + Math.random().toString(36).substr(2, 8).toUpperCase())
-  setPersistOrderId(orderId.value)
-  persistQuizNow()
+  const savedOrderId = getSavedOrderId()
+  const orderId = ref(savedOrderId || 'FS-' + Math.random().toString(36).substr(2, 8).toUpperCase())
+  if (savedOrderId) {
+    setPersistOrderId(savedOrderId)
+  }
   const audioPlaying = ref(false)
   const audioProgress = ref(0)
   const audioLocked = ref(true)
@@ -75,10 +78,8 @@ function createQuiz() {
   let videoInterval = null
   let pollTimer = null
   let pollInFlight = false
-
-  function isPersistedOrderId(id) {
-    return !!id && !String(id).startsWith('FS-')
-  }
+  let pollAttempts = 0
+  let lastPollProgress = -1
 
   function activeOrderId() {
     const fromRoute = route.query.orderId
@@ -179,11 +180,18 @@ function createQuiz() {
     if (!id || pollInFlight) return
 
     pollInFlight = true
+    pollAttempts += 1
     try {
       const status = await getQuizStatus(id)
-      generationProgress.value = Math.max(0, status.progress ?? 0)
+      const progress = Math.max(0, status.progress ?? 0)
+      generationProgress.value = progress
       generationStatus.value = status.status
       generationStatusLabel.value = status.statusLabel || generationStatusLabel.value
+
+      if (progress === lastPollProgress && pollAttempts > 8) {
+        generationStatusLabel.value = '🎧 Finalizando suas músicas...'
+      }
+      lastPollProgress = progress
 
       if (status.status === 'music_ready' || status.status === 'preview_shown') {
         clearPollTimer()
@@ -193,6 +201,12 @@ function createQuiz() {
         generationError.value = status.errorMessage || 'Erro na geração da música'
       }
     } catch (err) {
+      if (err.message?.includes('não encontrado') || err.message?.includes('invalid input syntax')) {
+        beginNewQuizSession()
+        generationError.value = 'Sessão expirada. Volte ao passo 3 e clique em Próximo para gerar novamente.'
+        clearPollTimer()
+        return
+      }
       generationError.value = err.message
     } finally {
       pollInFlight = false
@@ -201,8 +215,10 @@ function createQuiz() {
 
   function startGenerationPolling() {
     clearPollTimer()
+    pollAttempts = 0
+    lastPollProgress = -1
     pollGenerationStatus()
-    pollTimer = setInterval(pollGenerationStatus, 3000)
+    pollTimer = setInterval(pollGenerationStatus, 5000)
   }
 
   async function resumeGenerationIfNeeded() {
@@ -253,6 +269,11 @@ function createQuiz() {
         startGenerationPolling()
       }
     } catch (err) {
+      if (err.message?.includes('não encontrado') || err.message?.includes('invalid input syntax')) {
+        beginNewQuizSession()
+        generationError.value = 'Sessão expirada. Volte ao passo 3 e clique em Próximo para gerar novamente.'
+        return
+      }
       generationError.value = err.message
     } finally {
       generationLoading.value = false
@@ -272,9 +293,10 @@ function createQuiz() {
   }
 
   async function ensureContactSaved() {
-    if (!orderId.value || !form.email) return
+    const id = activeOrderId()
+    if (!id || !form.email) return
     try {
-      await updateQuizContact(orderId.value, {
+      await updateQuizContact(id, {
         fullName: form.fullName || form.honoredName || 'Cliente',
         email: form.email,
         whatsapp: form.whatsapp,
@@ -286,10 +308,11 @@ function createQuiz() {
   }
 
   async function loadPreview() {
-    if (!orderId.value) return
+    const id = activeOrderId()
+    if (!id) return
     previewLoading.value = true
     try {
-      const preview = await getQuizPreview(orderId.value)
+      const preview = await getQuizPreview(id)
       previewData.value = preview
       hydrateFormFromOrder(preview)
       generationProgress.value = 100
@@ -299,6 +322,11 @@ function createQuiz() {
         audioLocked.value = false
       }
     } catch (err) {
+      if (err.message?.includes('não encontrado') || err.message?.includes('invalid input syntax')) {
+        beginNewQuizSession()
+        generationError.value = 'Sessão expirada. Volte ao passo 3 e clique em Próximo para gerar novamente.'
+        return
+      }
       generationError.value = err.message
     } finally {
       previewLoading.value = false
@@ -417,7 +445,10 @@ function createQuiz() {
 
   function goToStep(step) {
     const query = {}
-    const id = route.query.orderId || orderId.value
+    const fromRoute = route.query.orderId
+    const id =
+      (typeof fromRoute === 'string' && isPersistedOrderId(fromRoute) && fromRoute) ||
+      activeOrderId()
     if (id) query.orderId = String(id)
     router.push({ name: `quiz-step-${step}`, query })
   }
@@ -437,8 +468,10 @@ function createQuiz() {
 
   async function goToPayment() {
     if (!canProceed(5)) return
+    const id = activeOrderId()
+    if (!id) return
     try {
-      await updateQuizContact(orderId.value, {
+      await updateQuizContact(id, {
         fullName: form.fullName,
         email: form.email,
         whatsapp: form.whatsapp,
@@ -516,6 +549,7 @@ function createQuiz() {
   }
 
   watch(orderId, (id) => {
+    if (!isPersistedOrderId(id)) return
     setPersistOrderId(id)
     persistQuizNow()
   })
@@ -523,7 +557,7 @@ function createQuiz() {
   watch(
     () => route.query.orderId,
     async (id) => {
-      if (!id || typeof id !== 'string') return
+      if (!id || typeof id !== 'string' || !isPersistedOrderId(id)) return
       orderId.value = id
       setPersistOrderId(id)
       persistQuizNow()

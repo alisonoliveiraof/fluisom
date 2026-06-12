@@ -32,7 +32,16 @@ export const initialPayment = () => ({
 export const form = reactive(initialForm())
 export const payment = reactive(initialPayment())
 
+export function isPersistedOrderId(id) {
+  return !!id && !String(id).startsWith('FS-')
+}
+
 const savedDraft = loadQuizDraft()
+if (savedDraft?.orderId && !isPersistedOrderId(savedDraft.orderId)) {
+  savedDraft.orderId = null
+  saveQuizDraft(savedDraft)
+}
+
 if (savedDraft?.form) {
   Object.assign(form, initialForm(), savedDraft.form)
   if (form.whatsapp) form.whatsapp = maskWhatsapp(form.whatsapp)
@@ -42,7 +51,8 @@ if (savedDraft?.payment) {
 }
 
 export function getSavedOrderId() {
-  return savedDraft?.orderId || null
+  const id = savedDraft?.orderId || null
+  return isPersistedOrderId(id) ? id : null
 }
 
 let persistOrderId = savedDraft?.orderId || null
