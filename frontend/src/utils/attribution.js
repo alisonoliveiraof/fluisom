@@ -14,6 +14,21 @@ function sanitize(value, max = 255) {
   return value.trim().slice(0, max)
 }
 
+export function captureAttributionFromLocation() {
+  if (typeof window === 'undefined') return
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const query = {}
+    for (const key of ATTRIBUTION_KEYS) {
+      const val = params.get(key)
+      if (val) query[key] = val
+    }
+    captureAttribution(query)
+  } catch {
+    // location indisponível
+  }
+}
+
 export function captureAttribution(query = {}) {
   const incoming = {}
   for (const key of ATTRIBUTION_KEYS) {
