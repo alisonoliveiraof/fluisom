@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import QuizLayout from '../layouts/QuizLayout.vue'
 import { canProceed, maxReachableStep } from '../quiz/quizState'
 import { SITE_TITLE } from '../constants'
+import { captureAttribution } from '../utils/attribution'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -47,6 +48,8 @@ router.afterEach((to) => {
 })
 
 router.beforeEach((to, from, next) => {
+  captureAttribution(to.query)
+
   const targetStep = to.meta.step
   if (!targetStep) return next()
 

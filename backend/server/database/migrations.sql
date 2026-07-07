@@ -68,13 +68,24 @@ CREATE TABLE IF NOT EXISTS quiz_orders (
 
   ip_address VARCHAR(45),
   user_agent TEXT,
-  session_id VARCHAR(255)
+  session_id VARCHAR(255),
+
+  traffic_src VARCHAR(100),
+  utm_source VARCHAR(100),
+  utm_medium VARCHAR(100),
+  utm_campaign VARCHAR(255),
+  utm_term VARCHAR(255),
+  utm_content VARCHAR(255),
+  landing_page TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_quiz_orders_status ON quiz_orders(status);
 CREATE INDEX IF NOT EXISTS idx_quiz_orders_email ON quiz_orders(email);
 CREATE INDEX IF NOT EXISTS idx_quiz_orders_suno_task ON quiz_orders(suno_task_id);
 CREATE INDEX IF NOT EXISTS idx_quiz_orders_created ON quiz_orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quiz_orders_traffic_src ON quiz_orders(traffic_src);
+CREATE INDEX IF NOT EXISTS idx_quiz_orders_utm_source ON quiz_orders(utm_source);
+CREATE INDEX IF NOT EXISTS idx_quiz_orders_paid_at ON quiz_orders(paid_at DESC);
 
 CREATE TABLE IF NOT EXISTS generation_logs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

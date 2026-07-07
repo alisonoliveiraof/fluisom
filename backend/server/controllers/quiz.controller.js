@@ -325,6 +325,7 @@ export async function updateContact(req, res, next) {
 }
 
 function mapQuizBodyToOrder(body, req) {
+  const attr = body.attribution || {}
   return {
     relationship: body.relationship,
     custom_relationship: body.customRelationship || null,
@@ -336,5 +337,12 @@ function mapQuizBodyToOrder(body, req) {
     voice: body.voice,
     ip_address: req.ip,
     user_agent: req.get('user-agent'),
+    traffic_src: attr.trafficSrc || body.src || null,
+    utm_source: attr.utmSource || null,
+    utm_medium: attr.utmMedium || null,
+    utm_campaign: attr.utmCampaign || null,
+    utm_term: attr.utmTerm || null,
+    utm_content: attr.utmContent || null,
+    landing_page: attr.landingPage || null,
   }
 }

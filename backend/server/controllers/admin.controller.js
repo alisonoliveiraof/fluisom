@@ -11,6 +11,8 @@ import {
   exportOrders,
   getAdminSetting,
   setAdminSetting,
+  getAttributionStats,
+  listRecentPaidSales,
 } from '../services/supabase.service.js'
 import { generateLyricsForOrder } from './lyrics.controller.js'
 import { generateMusicForOrder, retryMusicGeneration, ensureAllMusicVersions } from './music.controller.js'
@@ -29,12 +31,13 @@ export function login(req, res) {
 
 export async function dashboard(req, res, next) {
   try {
-    const [stats, ordersChart, { orders }] = await Promise.all([
+    const [stats, ordersChart, { orders }, attributionStats] = await Promise.all([
       getDashboardStats(),
       getOrdersLast7Days(),
       listOrders({ page: 1, limit: 10 }),
+      getAttributionStats(),
     ])
-    res.json({ stats, ordersChart, recentOrders: orders })
+    res.json({ stats, ordersChart, recentOrders: orders, attributionStats })
   } catch (err) {
     next(err)
   }
@@ -130,6 +133,16 @@ export async function realtimeStats(req, res, next) {
   }
 }
 
+export async function recentSales(req, res, next) {
+  try {
+    const since = req.query.since || null
+    const sales = await listRecentPaidSales({ since, limit: Number(req.query.limit) || 20 })
+    res.json({ sales })
+  } catch (err) {
+    next(err)
+  }
+}
+
 export async function exportOrdersCsv(req, res, next) {
   try {
     const orders = await exportOrders({
@@ -140,7 +153,9 @@ export async function exportOrdersCsv(req, res, next) {
     })
 
     const headers = [
-      'id', 'created_at', 'honored_name', 'full_name', 'email', 'genre', 'voice', 'status', 'payment_status', 'payment_amount',
+      'id', 'created_at', 'honored_name', 'full_name', 'email', 'genre', 'voice', 'status',
+      'payment_status', 'payment_amount', 'paid_at', 'traffic_src', 'utm_source', 'utm_medium',
+      'utm_campaign', 'utm_term', 'utm_content', 'landing_page',
     ]
     const rows = orders.map((o) =>
       headers.map((h) => `"${String(o[h] ?? '').replace(/"/g, '""')}"`).join(','),

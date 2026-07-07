@@ -12,6 +12,7 @@ import {
   exportOrdersCsv,
   getSettings,
   updateSettings,
+  recentSales,
 } from '../controllers/admin.controller.js'
 import { authMiddleware } from '../middleware/auth.middleware.js'
 
@@ -28,6 +29,7 @@ router.post('/login', loginLimiter, login)
 router.use(authMiddleware)
 
 router.get('/dashboard', dashboard)
+router.get('/sales/recent', recentSales)
 router.get('/orders', orders)
 router.get('/orders/export', exportOrdersCsv)
 router.get('/orders/:orderId', orderDetail)

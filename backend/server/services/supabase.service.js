@@ -41,7 +41,9 @@ export async function listOrders({ status, page = 1, limit = 20, search, dateFro
   if (dateTo) query = query.lte('created_at', dateTo)
   if (search && search !== 'undefined') {
     const term = search.replace(/[%_,]/g, '')
-    query = query.or(`email.ilike.%${term}%,full_name.ilike.%${term}%,honored_name.ilike.%${term}%`)
+    query = query.or(
+      `email.ilike.%${term}%,full_name.ilike.%${term}%,honored_name.ilike.%${term}%,traffic_src.ilike.%${term}%,utm_source.ilike.%${term}%,utm_medium.ilike.%${term}%,utm_campaign.ilike.%${term}%`,
+    )
   }
 
   const from = (page - 1) * limit
@@ -252,4 +254,71 @@ export async function countTodayGenerations() {
 
   if (error) throw new Error(error.message)
   return count || 0
+}
+
+function attributionKey(order) {
+  if (order.traffic_src) return `src:${order.traffic_src}`
+  if (order.utm_source) {
+    const parts = [order.utm_source]
+    if (order.utm_medium) parts.push(order.utm_medium)
+    if (order.utm_campaign) parts.push(order.utm_campaign)
+    return parts.join(' / ')
+  }
+  return 'Direto'
+}
+
+export async function getAttributionStats() {
+  const supabase = getSupabase()
+  const { data, error } = await supabase
+    .from('quiz_orders')
+    .select('traffic_src, utm_source, utm_medium, utm_campaign, payment_status, payment_amount, status')
+    .eq('payment_status', 'paid')
+
+  if (error) throw new Error(`Erro ao buscar origens: ${error.message}`)
+
+  const groups = new Map()
+  for (const order of data || []) {
+    const label = attributionKey(order)
+    const current = groups.get(label) || { label, sales: 0, revenue: 0, leads: 0 }
+    current.sales += 1
+    current.revenue += Number(order.payment_amount || 0)
+    groups.set(label, current)
+  }
+
+  const { data: allOrders, error: leadsError } = await supabase
+    .from('quiz_orders')
+    .select('traffic_src, utm_source, utm_medium, utm_campaign')
+
+  if (!leadsError) {
+    const leadGroups = new Map()
+    for (const order of allOrders || []) {
+      const label = attributionKey(order)
+      leadGroups.set(label, (leadGroups.get(label) || 0) + 1)
+    }
+    for (const [label, leads] of leadGroups) {
+      const current = groups.get(label) || { label, sales: 0, revenue: 0, leads: 0 }
+      current.leads = leads
+      groups.set(label, current)
+    }
+  }
+
+  return [...groups.values()].sort((a, b) => b.revenue - a.revenue || b.sales - a.sales)
+}
+
+export async function listRecentPaidSales({ since, limit = 20 } = {}) {
+  const supabase = getSupabase()
+  let query = supabase
+    .from('quiz_orders')
+    .select(
+      'id, honored_name, full_name, email, payment_amount, payment_status, paid_at, created_at, traffic_src, utm_source, utm_medium, utm_campaign, utm_term, utm_content',
+    )
+    .eq('payment_status', 'paid')
+    .order('paid_at', { ascending: false, nullsFirst: false })
+    .limit(limit)
+
+  if (since) query = query.gte('paid_at', since)
+
+  const { data, error } = await query
+  if (error) throw new Error(`Erro ao buscar vendas recentes: ${error.message}`)
+  return data || []
 }

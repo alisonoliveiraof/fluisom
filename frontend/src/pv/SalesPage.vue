@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { LOGO_URL, REACT_VIDEO_URL } from '../constants'
+import { getAttributionQuery } from '../utils/attribution'
 
 const router = useRouter()
 
@@ -185,7 +186,7 @@ let sectionObserver = null
 let counterObserver = null
 
 function navigateToQuiz() {
-  router.push({ path: '/passo/1', query: { novo: '1' } })
+  router.push({ path: '/passo/1', query: { novo: '1', ...getAttributionQuery() } })
 }
 
 function navigateToOrders() {

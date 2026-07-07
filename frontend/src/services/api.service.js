@@ -1,3 +1,5 @@
+import { getAttributionPayload } from '../utils/attribution'
+
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3001/api')
 
 async function request(path, options = {}) {
@@ -31,6 +33,7 @@ export function startQuiz(formData) {
       specialMessage: formData.specialMessage,
       genre: formData.genre,
       voice: formData.voice,
+      attribution: getAttributionPayload(),
     }),
   })
 }
@@ -121,6 +124,11 @@ export function getAdminDashboard() {
   return adminRequest('/admin/dashboard')
 }
 
+export function getAdminRecentSales(since) {
+  const qs = since ? `?since=${encodeURIComponent(since)}` : ''
+  return adminRequest(`/admin/sales/recent${qs}`)
+}
+
 function buildQuery(params = {}) {
   const clean = Object.fromEntries(
     Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''),
@@ -182,6 +190,7 @@ export default {
   getQuizPaymentStatus,
   adminLogin,
   getAdminDashboard,
+  getAdminRecentSales,
   getAdminOrders,
   getAdminOrderDetail,
   retryAdminOrder,

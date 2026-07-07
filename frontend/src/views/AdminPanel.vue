@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   adminLogin,
   getAdminDashboard,
+  getAdminRecentSales,
   getAdminOrders,
   getAdminOrderDetail,
   retryAdminOrder,
@@ -13,10 +14,12 @@ import {
 } from '../services/api.service'
 import { LOGO_URL } from '../constants'
 import { downloadMusicFile, normalizeOrderVersions } from '../utils/musicDownload'
+import { formatAttributionLabel } from '../utils/attribution'
 
 const ADMIN_LOGO_URL = LOGO_URL
 
 const TOKEN_KEY = 'fluisom_admin_token'
+const SALES_SEEN_KEY = 'fluisom_admin_sales_seen_at'
 
 const isAuthenticated = ref(!!localStorage.getItem(TOKEN_KEY))
 const secretKey = ref('')
@@ -45,8 +48,12 @@ const detailOpen = ref(false)
 
 const settings = ref({ generationEnabled: true, maxDailyGenerations: 100, priceBrl: 47.9, envKeys: [] })
 const chartData = ref([])
+const attributionStats = ref([])
+const salesNotifications = ref([])
+const salesNotificationsOpen = ref(true)
 
 let refreshTimer = null
+let knownSaleIds = new Set()
 
 const statusLabels = {
   pending: 'Pendente',
@@ -69,6 +76,7 @@ async function handleLogin() {
     const { token } = await adminLogin(secretKey.value)
     localStorage.setItem(TOKEN_KEY, token)
     isAuthenticated.value = true
+    await requestSalesNotificationPermission()
     await loadDashboard()
     startAutoRefresh()
   } catch (err) {
@@ -91,11 +99,79 @@ async function loadDashboard() {
     stats.value = data.stats
     chartData.value = data.ordersChart || []
     recentOrders.value = data.recentOrders || []
+    attributionStats.value = data.attributionStats || []
+    await checkSalesNotifications()
   } catch (err) {
     if (err.status === 401) logout()
   } finally {
     loading.value = false
   }
+}
+
+function getSalesSeenAt() {
+  return localStorage.getItem(SALES_SEEN_KEY)
+}
+
+function markSalesSeen() {
+  localStorage.setItem(SALES_SEEN_KEY, new Date().toISOString())
+  salesNotifications.value = []
+  salesNotificationsOpen.value = false
+}
+
+async function requestSalesNotificationPermission() {
+  if (!('Notification' in window)) return
+  if (Notification.permission !== 'default') return
+  if (!window.matchMedia('(max-width: 768px)').matches) return
+  try {
+    await Notification.requestPermission()
+  } catch {
+    // permissão negada ou indisponível
+  }
+}
+
+function notifySaleNative(sale) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+  const amount = formatMoney(sale.payment_amount)
+  const name = sale.honored_name || sale.full_name || 'Cliente'
+  const origin = formatAttributionLabel(sale)
+  try {
+    new Notification('Nova venda Fluisom!', {
+      body: `${amount} — ${name} (${origin})`,
+      tag: `sale-${sale.id}`,
+    })
+  } catch {
+    // notificações nativas indisponíveis
+  }
+}
+
+async function checkSalesNotifications() {
+  const since = getSalesSeenAt()
+  const data = await getAdminRecentSales(since)
+  const sales = data.sales || []
+  const fresh = sales.filter((sale) => !knownSaleIds.has(sale.id))
+
+  if (!since && sales.length) {
+    knownSaleIds = new Set(sales.map((sale) => sale.id))
+    return
+  }
+
+  if (!fresh.length) return
+
+  fresh.forEach((sale) => {
+    knownSaleIds.add(sale.id)
+    notifySaleNative(sale)
+  })
+
+  salesNotifications.value = fresh
+  salesNotificationsOpen.value = true
+}
+
+function dismissSalesNotifications() {
+  markSalesSeen()
+}
+
+function formatAttribution(order) {
+  return formatAttributionLabel(order)
 }
 
 async function loadOrders(page = 1) {
@@ -235,6 +311,7 @@ function startAutoRefresh() {
   refreshTimer = setInterval(() => {
     if (section.value === 'dashboard') loadDashboard()
     if (section.value === 'orders') loadOrders(ordersPage.value)
+    checkSalesNotifications().catch(() => {})
   }, 30000)
 }
 
@@ -248,6 +325,7 @@ onMounted(() => {
   if (isAuthenticated.value) {
     loadDashboard()
     startAutoRefresh()
+    requestSalesNotificationPermission()
   }
 })
 
@@ -286,6 +364,22 @@ onUnmounted(stopAutoRefresh)
           <h2>Painel Fluisom</h2>
           <span class="date">{{ new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }) }}</span>
         </header>
+
+        <div v-if="salesNotificationsOpen && salesNotifications.length" class="sales-notifications">
+          <div class="sales-notifications-head">
+            <strong>🎉 {{ salesNotifications.length }} nova(s) venda(s)</strong>
+            <button type="button" class="sales-dismiss" @click="dismissSalesNotifications">Marcar como vistas</button>
+          </div>
+          <div class="sales-notifications-list">
+            <article v-for="sale in salesNotifications" :key="sale.id" class="sales-notification-card">
+              <div>
+                <p class="sales-notification-title">{{ formatMoney(sale.payment_amount) }} — {{ sale.honored_name || sale.full_name || 'Cliente' }}</p>
+                <p class="sales-notification-meta">{{ formatAttribution(sale) }} · {{ formatDate(sale.paid_at || sale.created_at) }}</p>
+              </div>
+              <button type="button" @click="openOrderDetail(sale.id)">Ver</button>
+            </article>
+          </div>
+        </div>
 
         <section v-if="section === 'dashboard'" class="section">
           <div class="metrics">
@@ -327,6 +421,34 @@ onUnmounted(stopAutoRefresh)
           </div>
 
           <div class="table-card">
+            <h3>Vendas por origem (src / UTM)</h3>
+            <p class="orders-hint">Rastreie de onde vieram os pedidos pagos. Use links como <code>/pv?utm_source=instagram&utm_campaign=lancamento</code> ou <code>/pv?src=bio</code>.</p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Origem</th>
+                    <th>Leads</th>
+                    <th>Vendas</th>
+                    <th>Receita</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="!attributionStats.length">
+                    <td colspan="4" class="empty-row">Nenhuma venda com origem rastreada ainda.</td>
+                  </tr>
+                  <tr v-for="row in attributionStats" :key="row.label">
+                    <td><strong>{{ row.label }}</strong></td>
+                    <td>{{ row.leads || 0 }}</td>
+                    <td>{{ row.sales }}</td>
+                    <td>{{ formatMoney(row.revenue) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="table-card">
             <h3>Pedidos recentes</h3>
             <div class="table-wrap">
             <table>
@@ -336,6 +458,7 @@ onUnmounted(stopAutoRefresh)
                   <th>Nome</th>
                   <th>Homenageado</th>
                   <th>Gênero</th>
+                  <th>Origem</th>
                   <th>Status</th>
                   <th>Criado</th>
                   <th>Ações</th>
@@ -347,6 +470,7 @@ onUnmounted(stopAutoRefresh)
                   <td>{{ o.full_name || '—' }}</td>
                   <td>{{ o.honored_name }}</td>
                   <td>{{ o.genre }}</td>
+                  <td class="origin-cell">{{ formatAttribution(o) }}</td>
                   <td><span :class="statusClass(o.status)">{{ statusLabels[o.status] || o.status }}</span></td>
                   <td>{{ formatDate(o.created_at) }}</td>
                   <td class="actions">
@@ -369,6 +493,7 @@ onUnmounted(stopAutoRefresh)
 
             <p class="orders-hint">
               Todos os pedidos iniciados no quiz aparecem aqui — o email só é preenchido no passo 5 (contato), antes do pagamento.
+              Busque também por <code>src</code>, <code>utm_source</code> ou campanha.
             </p>
 
             <div class="filters">
@@ -392,13 +517,14 @@ onUnmounted(stopAutoRefresh)
                     <th>Contato</th>
                     <th>Status</th>
                     <th>Pagamento</th>
+                    <th>Origem</th>
                     <th>Criado</th>
                     <th>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-if="!loading && orders.length === 0">
-                    <td colspan="7" class="empty-row">Nenhum pedido encontrado.</td>
+                    <td colspan="8" class="empty-row">Nenhum pedido encontrado.</td>
                   </tr>
                   <tr v-for="o in orders" :key="o.id">
                     <td class="mono">{{ o.id.slice(0, 8) }}…</td>
@@ -409,6 +535,7 @@ onUnmounted(stopAutoRefresh)
                     </td>
                     <td><span :class="statusClass(o.status)">{{ statusLabels[o.status] || o.status }}</span></td>
                     <td>{{ o.payment_status === 'paid' ? 'Pago' : 'Não pago' }}</td>
+                    <td class="origin-cell">{{ formatAttribution(o) }}</td>
                     <td>{{ formatDate(o.created_at) }}</td>
                     <td class="actions">
                       <button @click="openOrderDetail(o.id)">Ver</button>
@@ -502,6 +629,18 @@ onUnmounted(stopAutoRefresh)
                 {{ coverDownloading ? 'Baixando...' : '⬇ Baixar capa' }}
               </button>
             </div>
+          </section>
+
+          <section>
+            <h4>Origem do tráfego</h4>
+            <p><strong>Resumo:</strong> {{ formatAttribution(selectedOrder) }}</p>
+            <p><strong>src:</strong> {{ selectedOrder.traffic_src || '—' }}</p>
+            <p><strong>utm_source:</strong> {{ selectedOrder.utm_source || '—' }}</p>
+            <p><strong>utm_medium:</strong> {{ selectedOrder.utm_medium || '—' }}</p>
+            <p><strong>utm_campaign:</strong> {{ selectedOrder.utm_campaign || '—' }}</p>
+            <p><strong>utm_term:</strong> {{ selectedOrder.utm_term || '—' }}</p>
+            <p><strong>utm_content:</strong> {{ selectedOrder.utm_content || '—' }}</p>
+            <p><strong>Landing:</strong> {{ selectedOrder.landing_page || '—' }}</p>
           </section>
 
           <section>
@@ -1001,6 +1140,85 @@ th, td { padding: 10px 8px; border-bottom: 1px solid #eef5fb; text-align: left; 
 
 .muted { color: #8aaabb; font-size: 0.85rem; }
 
+.origin-cell {
+  font-size: 0.82rem;
+  color: #5b7a94;
+  max-width: 180px;
+}
+
+.orders-hint code {
+  background: #eef5fb;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.sales-notifications {
+  margin-bottom: 16px;
+  padding: 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ecfdf5, #e0f7fa);
+  border: 1px solid #86efac;
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.12);
+}
+
+.sales-notifications-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sales-dismiss {
+  border: none;
+  background: #0d2137;
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.sales-notifications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sales-notification-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 153, 184, 0.15);
+}
+
+.sales-notification-title {
+  margin: 0 0 4px;
+  font-weight: 700;
+  color: #0d2137;
+}
+
+.sales-notification-meta {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #5b7a94;
+}
+
+.sales-notification-card button {
+  border: none;
+  background: #0099b8;
+  color: #fff;
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .modal-actions { display: flex; gap: 10px; }
 
 .timeline { display: flex; flex-direction: column; gap: 8px; }
@@ -1043,5 +1261,15 @@ th, td { padding: 10px 8px; border-bottom: 1px solid #eef5fb; text-align: left; 
   }
   .sidebar.open { transform: translateX(0); }
   .metrics { grid-template-columns: 1fr; }
+  .sales-notifications {
+    position: sticky;
+    top: 8px;
+    z-index: 20;
+  }
+  .sales-notifications-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .sales-dismiss { width: 100%; }
 }
 </style>
