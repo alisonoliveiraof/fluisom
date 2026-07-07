@@ -276,6 +276,8 @@ export async function getQuizPreview(req, res, next) {
     }
 
     const versions = mapVersionsForClient(order)
+    const price = Number(await getAdminSetting('price_brl')) || Number(order.payment_amount) || 47.9
+
     res.json({
       orderId: order.id,
       honoredName: order.honored_name,
@@ -291,6 +293,9 @@ export async function getQuizPreview(req, res, next) {
       email: order.email,
       lyricsPreview: getLyricsPreview(order.generated_lyrics, 4),
       duration: 30,
+      paymentAmount: price,
+      paymentStatus: order.payment_status || 'unpaid',
+      paid: order.payment_status === 'paid',
     })
   } catch (err) {
     next(err)
@@ -300,14 +305,20 @@ export async function getQuizPreview(req, res, next) {
 export async function updateContact(req, res, next) {
   try {
     const { fullName, email, whatsapp, discreteMode } = req.body
+    const price = Number(await getAdminSetting('price_brl')) || 47.9
     const order = await updateOrder(req.params.orderId, {
       full_name: fullName,
       email,
       whatsapp,
       discrete_mode: discreteMode ?? false,
+      payment_amount: price,
       status: 'payment_pending',
     })
-    res.json({ orderId: order.id, status: order.status })
+    res.json({
+      orderId: order.id,
+      status: order.status,
+      paymentAmount: Number(order.payment_amount || price),
+    })
   } catch (err) {
     next(err)
   }

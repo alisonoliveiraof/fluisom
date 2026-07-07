@@ -7,7 +7,10 @@ import {
   getQuizStatus,
   getQuizPreview,
   updateQuizContact,
+  createQuizPayment,
+  getQuizPaymentStatus,
 } from '../services/api.service'
+import { createCardToken } from '../utils/mercadopago'
 
 const QUIZ_KEY = Symbol('quiz')
 
@@ -69,9 +72,13 @@ function createQuiz() {
   const previewData = ref(null)
   const previewAudioEl = ref(null)
   const previewLoading = ref(false)
+  const paymentAmount = ref(47.9)
+  const paymentLoading = ref(false)
+  const paymentError = ref('')
+  const pixData = ref(null)
+  const pixWaiting = ref(false)
 
   const waveHeights = Array.from({ length: 40 }, () => Math.floor(Math.random() * 40 + 8))
-  const qrPattern = Array.from({ length: 64 }, () => Math.random() > 0.45)
   const videoWaveBars = Array.from({ length: 20 }, (_, i) => i)
 
   let audioInterval = null
@@ -116,6 +123,8 @@ function createQuiz() {
     const digits = payment.cardNumber.replace(/\D/g, '')
     return digits.slice(-4) || '••••'
   })
+
+  const paymentAmountLabel = computed(() => paymentAmount.value.toFixed(2).replace('.', ','))
 
   const audioTimeDisplay = computed(() => {
     const total = 30
@@ -314,6 +323,10 @@ function createQuiz() {
     try {
       const preview = await getQuizPreview(id)
       previewData.value = preview
+      syncPaymentAmountFromPreview(preview)
+      if (preview.paid && Number(route.meta.step) === 6) {
+        goToStep(7)
+      }
       hydrateFormFromOrder(preview)
       generationProgress.value = 100
       generationStatus.value = preview.status || 'preview_shown'
@@ -483,8 +496,158 @@ function createQuiz() {
     goToStep(6)
   }
 
-  function confirmPayment() {
-    goToStep(7)
+  function digitsOnly(value) {
+    return String(value || '').replace(/\D/g, '')
+  }
+
+  function syncPaymentAmountFromPreview(data) {
+    if (data?.paymentAmount) {
+      paymentAmount.value = Number(data.paymentAmount) || paymentAmount.value
+    }
+  }
+
+  let paymentPollTimer = null
+
+  function clearPaymentPoll() {
+    if (paymentPollTimer) {
+      clearInterval(paymentPollTimer)
+      paymentPollTimer = null
+    }
+  }
+
+  async function pollPaymentUntilPaid(orderIdValue) {
+    clearPaymentPoll()
+    pixWaiting.value = true
+
+    return new Promise((resolve, reject) => {
+      let attempts = 0
+      paymentPollTimer = setInterval(async () => {
+        attempts += 1
+        try {
+          const status = await getQuizPaymentStatus(orderIdValue)
+          if (status.paid) {
+            clearPaymentPoll()
+            pixWaiting.value = false
+            resolve(status)
+            return
+          }
+          if (status.status === 'rejected' || status.status === 'cancelled') {
+            clearPaymentPoll()
+            pixWaiting.value = false
+            reject(new Error(status.message || 'Pagamento não aprovado'))
+          }
+          if (attempts >= 120) {
+            clearPaymentPoll()
+            pixWaiting.value = false
+            reject(new Error('Tempo esgotado aguardando o pagamento PIX'))
+          }
+        } catch (err) {
+          clearPaymentPoll()
+          pixWaiting.value = false
+          reject(err)
+        }
+      }, 3000)
+    })
+  }
+
+  async function copyPixCode() {
+    if (!pixData.value?.qrCode) return
+    try {
+      await navigator.clipboard.writeText(pixData.value.qrCode)
+    } catch {
+      // fallback silencioso
+    }
+  }
+
+  async function confirmPayment() {
+    const id = activeOrderId()
+    if (!id) {
+      paymentError.value = 'Pedido inválido. Volte e tente novamente.'
+      return
+    }
+
+    paymentError.value = ''
+    paymentLoading.value = true
+
+    try {
+      if (previewData.value?.paid) {
+        goToStep(7)
+        return
+      }
+
+      if (payment.method === 'pix') {
+        const cpf = digitsOnly(payment.cpf)
+        if (cpf.length < 11) {
+          paymentError.value = 'Informe um CPF/CNPJ válido para pagar com PIX.'
+          return
+        }
+
+        const result = await createQuizPayment(id, {
+          method: 'pix',
+          cpf,
+        })
+
+        pixData.value = {
+          qrCode: result.qrCode,
+          qrCodeBase64: result.qrCodeBase64,
+          paymentId: result.paymentId,
+        }
+
+        await pollPaymentUntilPaid(id)
+        goToStep(7)
+        return
+      }
+
+      const cpf = digitsOnly(payment.cardCpf)
+      const cardNumber = digitsOnly(payment.cardNumber)
+      if (cardNumber.length < 13) {
+        paymentError.value = 'Informe o número do cartão completo.'
+        return
+      }
+      if (!payment.cardExpiry || payment.cardExpiry.length < 5) {
+        paymentError.value = 'Informe a validade do cartão.'
+        return
+      }
+      if (!payment.cardCvv || payment.cardCvv.length < 3) {
+        paymentError.value = 'Informe o CVV do cartão.'
+        return
+      }
+      if (!payment.cardName.trim()) {
+        paymentError.value = 'Informe o nome impresso no cartão.'
+        return
+      }
+      if (cpf.length < 11) {
+        paymentError.value = 'Informe o CPF do titular do cartão.'
+        return
+      }
+
+      const tokenData = await createCardToken(payment)
+      const result = await createQuizPayment(id, {
+        method: 'card',
+        cpf,
+        cardToken: tokenData.token,
+        paymentMethodId: tokenData.paymentMethodId,
+        issuerId: tokenData.issuerId,
+        installments: 1,
+      })
+
+      if (result.paid) {
+        goToStep(7)
+        return
+      }
+
+      if (result.status === 'pending' || result.status === 'in_process') {
+        await pollPaymentUntilPaid(id)
+        goToStep(7)
+        return
+      }
+
+      paymentError.value = result.statusDetail || 'Pagamento não aprovado. Verifique os dados do cartão.'
+    } catch (err) {
+      paymentError.value = err.message || 'Não foi possível processar o pagamento.'
+    } finally {
+      paymentLoading.value = false
+    }
   }
 
   function resetQuiz() {
@@ -603,6 +766,7 @@ function createQuiz() {
     clearAudioInterval()
     clearVideoInterval()
     clearPollTimer()
+    clearPaymentPoll()
   })
 
   return {
@@ -623,13 +787,18 @@ function createQuiz() {
     cardFlipped,
     showConfetti,
     waveHeights,
-    qrPattern,
     videoWaveBars,
     genreLabel,
     relationshipLabel,
     progressPercent,
     honoredDisplay,
     cardLastFour,
+    paymentAmount,
+    paymentAmountLabel,
+    paymentLoading,
+    paymentError,
+    pixData,
+    pixWaiting,
     audioTimeDisplay,
     playedBars,
     qualitiesProgress,
@@ -641,6 +810,7 @@ function createQuiz() {
     goBack,
     goToPayment,
     confirmPayment,
+    copyPixCode,
     resetQuiz,
     goToStep,
     onCpfInput,

@@ -9,5 +9,8 @@
     "start": "npm run start --workspace=fluisom-backend",
     "stop": "npm run stop --workspace=fluisom-backend",
     "setup:supabase": "npm run setup:supabase --workspace=fluisom-backend"
+  },
+  "dependencies": {
+    "mercadopago": "^3.2.0"
   }
 }

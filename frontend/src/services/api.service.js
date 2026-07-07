@@ -88,6 +88,17 @@ export function updateQuizContact(orderId, contact) {
   })
 }
 
+export function createQuizPayment(orderId, payload) {
+  return request(`/quiz/${orderId}/payment`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getQuizPaymentStatus(orderId) {
+  return request(`/quiz/${orderId}/payment/status`)
+}
+
 export function adminLogin(secretKey) {
   return request('/admin/login', {
     method: 'POST',
@@ -167,6 +178,8 @@ export default {
   getQuizPreview,
   getMyOrders,
   updateQuizContact,
+  createQuizPayment,
+  getQuizPaymentStatus,
   adminLogin,
   getAdminDashboard,
   getAdminOrders,

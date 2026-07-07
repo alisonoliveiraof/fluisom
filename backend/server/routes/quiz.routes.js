@@ -9,6 +9,7 @@ import {
   getQuizPreview,
   updateContact,
 } from '../controllers/quiz.controller.js'
+import { createOrderPayment, getOrderPaymentStatus } from '../controllers/payment.controller.js'
 import { validateQuizStart, validateContactUpdate } from '../middleware/validate.middleware.js'
 
 const router = Router()
@@ -38,5 +39,7 @@ router.post('/:orderId/music', startLimiter, submitMusicStep)
 router.get('/status/:orderId', pollLimiter, getQuizStatus)
 router.get('/preview/:orderId', pollLimiter, getQuizPreview)
 router.patch('/:orderId/contact', pollLimiter, validateContactUpdate, updateContact)
+router.post('/:orderId/payment', startLimiter, createOrderPayment)
+router.get('/:orderId/payment/status', pollLimiter, getOrderPaymentStatus)
 
 export default router

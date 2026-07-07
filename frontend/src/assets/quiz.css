@@ -975,6 +975,43 @@
   border: 2px dashed #b0d4e8;
   border-radius: 12px;
   padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qr-area--ready {
+  border-style: solid;
+  padding: 8px;
+}
+.qr-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.btn-copy-pix {
+  display: block;
+  width: 100%;
+  margin: 0 auto 12px;
+  padding: 12px 16px;
+  border: 1px solid #b0d4e8;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+.pix-waiting {
+  text-align: center;
+  color: var(--primary);
+  font-size: 0.875rem;
+  margin-bottom: 12px;
+}
+.payment-error {
+  color: #dc2626;
+  font-size: 0.875rem;
+  margin-bottom: 12px;
+  text-align: center;
 }
 .qr-grid {
   display: grid;

@@ -21,7 +21,15 @@ function normalizeOrigin(url) {
 }
 
 function resolveBackendUrl() {
-  if (process.env.BACKEND_URL) return normalizeOrigin(process.env.BACKEND_URL)
+  if (process.env.BACKEND_URL) {
+    const urls = process.env.BACKEND_URL.split(',').map(normalizeOrigin).filter(Boolean)
+    if (urls.length) {
+      if (process.env.VERCEL === '1') {
+        return urls.find((u) => u.startsWith('https://') && !u.includes('localhost')) || urls[urls.length - 1]
+      }
+      return urls.find((u) => u.includes('localhost')) || urls[0]
+    }
+  }
 
   if (process.env.VERCEL === '1') {
     const host = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL
@@ -78,6 +86,9 @@ export const env = {
   adminSecretKey: process.env.ADMIN_SECRET_KEY || 'fluisom_admin_2025',
   adminJwtSecret: process.env.ADMIN_JWT_SECRET || 'fluisom_jwt_change_me',
 
+  mercadoPagoAccessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN,
+  mercadoPagoPublicKey: process.env.MERCADOPAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY,
+  mercadoPagoWebhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET || process.env.MERCADO_PAGO_WEBHOOK_SECRET,
 }
 
 export function assertEnv() {

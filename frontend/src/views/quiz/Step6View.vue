@@ -11,12 +11,17 @@ const {
   orderId,
   cardFlipped,
   cardLastFour,
-  qrPattern,
+  paymentAmountLabel,
+  paymentLoading,
+  paymentError,
+  pixData,
+  pixWaiting,
   onCpfInput,
   onCardNumberInput,
   onExpiryInput,
   onCvvInput,
   confirmPayment,
+  copyPixCode,
   goBack,
   goToStep,
 } = useQuiz()
@@ -43,7 +48,7 @@ const {
           <span class="badge-delivery">Imediata</span>
         </div>
         <div class="summary-divider" />
-        <div class="summary-total">R$ 47,90</div>
+        <div class="summary-total">R$ {{ paymentAmountLabel }}</div>
         <p class="order-id-sm">{{ orderId }}</p>
       </aside>
 
@@ -67,12 +72,22 @@ const {
             <label class="label">Nome</label>
             <input v-model="form.fullName" type="text" class="input" readonly />
           </div>
-          <div class="qr-area">
-            <div class="qr-grid">
-              <span v-for="(filled, i) in qrPattern" :key="i" class="qr-cell" :class="{ filled }" />
-            </div>
+
+          <div v-if="pixData?.qrCodeBase64" class="qr-area qr-area--ready">
+            <img
+              :src="`data:image/png;base64,${pixData.qrCodeBase64}`"
+              alt="QR Code PIX"
+              class="qr-image"
+            />
           </div>
-          <p class="hint center">O QR Code aparecerá aqui após confirmar</p>
+          <div v-else class="qr-area">
+            <p class="hint center">O QR Code aparecerá aqui após confirmar</p>
+          </div>
+
+          <template v-if="pixData?.qrCode">
+            <button type="button" class="btn-copy-pix" @click="copyPixCode">Copiar código PIX</button>
+            <p v-if="pixWaiting" class="pix-waiting">Aguardando confirmação do pagamento PIX...</p>
+          </template>
         </template>
 
         <template v-else>
@@ -125,9 +140,20 @@ const {
           </div>
         </template>
 
-        <button type="button" class="btn-cta" @click="confirmPayment">🔒 Pagar Agora — R$ 47,90</button>
-        <p class="payment-secure">🔒 Seu pagamento é protegido pela Stripe. Nunca armazenamos seus dados de cartão.</p>
-        <p class="payment-badges">🔒 Pagamento Seguro | 📅 Garantia de 30 dias</p>
+        <p v-if="paymentError" class="payment-error">{{ paymentError }}</p>
+
+        <button
+          type="button"
+          class="btn-cta"
+          :disabled="paymentLoading || pixWaiting"
+          @click="confirmPayment"
+        >
+          <template v-if="paymentLoading || pixWaiting">Processando pagamento...</template>
+          <template v-else-if="pixData?.qrCode">Aguardando PIX...</template>
+          <template v-else>🔒 Pagar Agora — R$ {{ paymentAmountLabel }}</template>
+        </button>
+        <p class="payment-secure">🔒 Pagamento Seguro Via Mercado Pago. Nunca armazenamos seus dados de cartão.</p>
+        <p class="payment-badges">🔒 Pagamento Seguro Via Mercado Pago | 📅 Garantia de 30 dias</p>
       </div>
     </div>
 

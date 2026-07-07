@@ -2,6 +2,7 @@ import { Router } from 'express'
 import getSupabase from '../config/supabase.config.js'
 import { getOrderById, updateOrder, insertGenerationLog } from '../services/supabase.service.js'
 import { finalizeMusicFromWebhookClips } from '../controllers/music.controller.js'
+import { handleMercadoPagoWebhook } from '../controllers/payment.controller.js'
 import { buildMusicTitle, getGenreStyle } from '../utils/prompt.builder.js'
 
 const router = Router()
@@ -56,5 +57,7 @@ router.post('/suno', async (req, res) => {
     res.status(200).json({ status: 'received' })
   }
 })
+
+router.post('/mercadopago', handleMercadoPagoWebhook)
 
 export default router

@@ -809,7 +809,7 @@ onUnmounted(() => {
       <div class="footer-bottom">
         <span>© 2026 Fluisom. Todos os direitos reservados.</span>
         <div class="payment-pills">
-          <span>PIX</span><span>Visa</span><span>Mastercard</span><span>Stripe</span>
+          <span>PIX</span><span>Visa</span><span>Mastercard</span><span>Mercado Pago</span>
         </div>
       </div>
     </footer>
@@ -1273,7 +1273,7 @@ onUnmounted(() => {
 .final-badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 24px; margin: 24px 0 40px; font-weight: 600; font-size: 0.9rem; }
 .final-badges span:nth-child(1) { color: var(--green); }
 .final-badges span:nth-child(2) { color: var(--primary); }
-.final-badges span:nth-child(3) { color: var(--text-2); }
+.final-badges span:nth-child(3) { color: #fff; }
 .contact-block p { color: var(--text-2); margin: 8px 0; }
 .contact-block a { color: var(--primary); font-weight: 600; text-decoration: none; }
 .contact-block a:hover { text-decoration: underline; }
@@ -1300,6 +1300,7 @@ onUnmounted(() => {
 .footer-secure {
   display: inline-block; margin-top: 12px; padding: 6px 12px;
   border: 1px solid rgba(255,255,255,0.15); border-radius: 20px; font-size: 0.8rem !important;
+  color: #fff;
 }
 .footer-bottom {
   max-width: 1100px; margin: 32px auto 0; padding-top: 32px;
