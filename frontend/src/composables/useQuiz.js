@@ -34,6 +34,7 @@ import {
   confettiEmojis,
 } from '../data/quizData'
 import { maskWhatsapp } from '../utils/masks'
+import { getAttributionQuery } from '../utils/attribution'
 
 export function provideQuiz() {
   const quiz = createQuiz()
@@ -457,7 +458,7 @@ function createQuiz() {
   }
 
   function goToStep(step) {
-    const query = {}
+    const query = { ...getAttributionQuery() }
     const fromRoute = route.query.orderId
     const id =
       (typeof fromRoute === 'string' && isPersistedOrderId(fromRoute) && fromRoute) ||
@@ -662,7 +663,7 @@ function createQuiz() {
     clearAudioInterval()
     clearVideoInterval()
     beginNewQuizSession()
-    router.push({ name: 'quiz-step-1', query: { novo: '1' } })
+    router.push({ name: 'quiz-step-1', query: { novo: '1', ...getAttributionQuery() } })
   }
 
   function maskCpf(value) {

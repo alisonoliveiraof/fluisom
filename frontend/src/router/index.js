@@ -2,7 +2,15 @@ import { createRouter, createWebHistory } from 'vue-router'
 import QuizLayout from '../layouts/QuizLayout.vue'
 import { canProceed, maxReachableStep } from '../quiz/quizState'
 import { SITE_TITLE } from '../constants'
-import { captureAttribution } from '../utils/attribution'
+import { captureAttribution, ATTRIBUTION_KEYS } from '../utils/attribution'
+
+function keepAttributionQuery(query = {}) {
+  const kept = {}
+  for (const key of ATTRIBUTION_KEYS) {
+    if (query[key]) kept[key] = query[key]
+  }
+  return kept
+}
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -50,6 +58,7 @@ router.afterEach((to) => {
 router.beforeEach((to, from, next) => {
   captureAttribution(to.query)
 
+  const attribution = keepAttributionQuery(to.query)
   const targetStep = to.meta.step
   if (!targetStep) return next()
 
@@ -62,19 +71,19 @@ router.beforeEach((to, from, next) => {
 
   if (fromStep && targetStep > fromStep + 1) {
     const allowed = fromStep + (canProceed(fromStep) ? 1 : 0)
-    return next({ name: `quiz-step-${allowed}` })
+    return next({ name: `quiz-step-${allowed}`, query: attribution })
   }
 
   if (targetStep > 1) {
     for (let step = 1; step < targetStep; step++) {
       if (!canProceed(step)) {
-        return next({ name: `quiz-step-${step}` })
+        return next({ name: `quiz-step-${step}`, query: attribution })
       }
     }
   }
 
   if (targetStep === 7 && fromStep !== 6) {
-    return next({ name: `quiz-step-${maxReachableStep()}` })
+    return next({ name: `quiz-step-${maxReachableStep()}`, query: attribution })
   }
 
   next()
