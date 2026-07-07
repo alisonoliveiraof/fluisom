@@ -38,15 +38,21 @@ const displayText = ref('')
 const isDeleting = ref(false)
 let typewriterTimer = null
 
+const DEMO_AUDIO_FILE = 'Especial para Gabriele - Versão 1.mp3'
+
 const audioPlayerVisible = ref(false)
 const globalAudioPlaying = ref(false)
 const globalAudioProgress = ref(0)
-let globalAudioInterval = null
+const globalAudioDuration = ref(0)
+const globalAudioCurrent = ref(0)
+const stickyAudioRef = ref(null)
 
 const vinylPlaying = ref(false)
 const vinylProgress = ref(0)
-let vinylInterval = null
-const needleAngle = computed(() => (vinylPlaying.value ? -15 : -30))
+const vinylDuration = ref(0)
+const vinylCurrent = ref(0)
+const vinylAudioRef = ref(null)
+const needleAngle = computed(() => (vinylPlaying.value ? -32 : -12))
 
 const openFaqIndex = ref(null)
 const mobileMenuOpen = ref(false)
@@ -59,9 +65,82 @@ const waveHeightsCards = Array.from({ length: 4 }, () =>
 const musicCount = ref(0)
 const counterStarted = ref(false)
 
-const cardPlayers = ref([false, false, false, false])
-const cardProgress = ref([0, 0, 0, 0])
-let cardIntervals = []
+const audioRefs = ref({})
+const audioDurations = ref({})
+const audioCurrent = ref({})
+const playingIndex = ref(null)
+
+function publicAudioUrl(filename) {
+  return `/${filename.split('/').map(encodeURIComponent).join('/')}`
+}
+
+function formatAudioTime(seconds) {
+  if (!seconds || !Number.isFinite(seconds)) return '0:00'
+  const total = Math.floor(seconds)
+  const minutes = Math.floor(total / 60)
+  const remainder = total % 60
+  return `${minutes}:${String(remainder).padStart(2, '0')}`
+}
+
+function setAudioRef(index, el) {
+  if (el) audioRefs.value[index] = el
+  else delete audioRefs.value[index]
+}
+
+function onAudioMeta(index) {
+  const el = audioRefs.value[index]
+  if (!el?.duration) return
+  audioDurations.value[index] = el.duration
+}
+
+function onAudioTime(index) {
+  const el = audioRefs.value[index]
+  if (!el) return
+  audioCurrent.value[index] = el.currentTime
+}
+
+function onAudioEnded(index) {
+  if (playingIndex.value === index) playingIndex.value = null
+}
+
+function cardTimeDisplay(index) {
+  return `${formatAudioTime(audioCurrent.value[index] || 0)} / ${formatAudioTime(audioDurations.value[index] || 0)}`
+}
+
+const audioExamples = [
+  {
+    name: 'Maristela Sandaniel',
+    initial: 'M',
+    color: '#ff6b6b',
+    title: 'Para meu esposo (Gospel)',
+    text: '"Amei 🤩🤩. Fiquei emocionada aqui, e olha que foi pra ele hein kkkk. Vou mostrar à ele no seu aniversário que é mês que vem, ansiosaaaa pra ver a reação!"',
+    audio: 'Especial para Ademilson - Versão 2 Gospel.mp3',
+  },
+  {
+    name: 'Lorena Marques',
+    initial: 'L',
+    color: '#f472b6',
+    title: 'Para meu filho (Infantil)',
+    text: '"Marcelo amou, ficou todo feliz 🥹. Muito obrigada 🥰"',
+    audio: 'Especial para Marcelo - Versão 2 Infantil.mp3',
+  },
+  {
+    name: 'Angel Lima',
+    initial: 'A',
+    color: '#a855f7',
+    title: 'Para meu esposo (Funk)',
+    text: '"Eu escutei agora até o fim, gente do céu se um sistema desse vai ao ar eu mesma conheço um monte de gente que vai querer usar, meu pai por exemplo é um deles, amei 🥰. Mostrei pro Igor e ele gostou, achou muito legal, mandei até pra minha sogra também e ela falou que ficou muito bom."',
+    audio: 'Especial para Igor - Versão 2 Funk.mp3',
+  },
+  {
+    name: 'Alison Oliveira',
+    initial: 'A',
+    color: '#0099b8',
+    title: 'Para minha mãe (Gospel)',
+    text: '"Minha mãe amou, ficou até sem palavras ao ouvir de tão emocionada que ficou. Muito obrigado ☺️"',
+    audio: 'Especial para Ilza - Versão 1 Gospel.mp3',
+  },
+]
 
 const globalPlayedBars = computed(() => Math.floor((globalAudioProgress.value / 100) * 30))
 const vinylPlayedBars = computed(() => Math.floor((vinylProgress.value / 100) * 32))
@@ -76,16 +155,9 @@ const socialAvatars = [
 
 const reactVideoRef = ref(null)
 
-const audioExamples = [
-  { name: 'Ana R.', initial: 'A', color: '#ff6b6b', title: 'Para minha mãe', text: '"Minha mãe chorou quando ouviu. A letra falava exatamente da nossa história."' },
-  { name: 'Carlos M.', initial: 'C', color: '#f472b6', title: 'Para meu noivado', text: '"Usei no pedido de casamento. Foi o momento mais emocionante da noite."' },
-  { name: 'Pedro L.', initial: 'P', color: '#a855f7', title: 'Para meu pai', text: '"Homenageei meu pai que já partiu. A família inteira se emocionou."' },
-  { name: 'Julia F.', initial: 'J', color: '#f59e0b', title: 'Para minha filha', text: '"Fiz para o aniversário da minha filha. Ela disse que foi o melhor presente da vida."' },
-]
-
 const testimonials = [
   { name: 'Sofia Mendes', role: 'Filha', initial: 'S', color: '#ff6b6b', pillBg: '#fff0f0', pillColor: '#ff6b6b', pillBorder: '#ffc8c8', text: 'Fiz uma homenagem para minha mãe no seu aniversário de 58 anos. Ela chorou de tão emocionada que ficou e agora não para de ouvir. Valeu cada centavo pago' },
-  { name: 'Bianca Pereira', role: 'Empresária', initial: 'B', color: '#0099b8', pillBg: '#f0f8ff', pillColor: '#0099b8', pillBorder: '#b0d4e8', text: 'Criei uma música para minha empresa e fiquei impressionado com a qualidade e profissionalismo do Fluisom, recomendo muito' },
+  { name: 'Bianca Pereira', role: 'Empresária', initial: 'B', color: '#0099b8', pillBg: '#f0f8ff', pillColor: '#0099b8', pillBorder: '#b0d4e8', text: 'Criei uma música para minha empresa e fiquei impressionada com a qualidade e profissionalismo do Fluisom, recomendo muito' },
   { name: 'Amanda Neves', role: 'Noiva', initial: 'A', color: '#f472b6', pillBg: '#fff0f9', pillColor: '#f472b6', pillBorder: '#fbc8e8', text: 'Pedi uma música para meu casamento e ficou perfeita! Todos os convidados da festa choraram. Fiquei impressionada com a qualidade da música, parece até aquelas músicas de rádio!' },
 ]
 
@@ -137,63 +209,121 @@ function showStickyPlayer() {
 }
 
 function toggleGlobalAudio() {
+  const el = stickyAudioRef.value
+  if (!el) return
+
   if (globalAudioPlaying.value) {
+    el.pause()
     globalAudioPlaying.value = false
-    clearInterval(globalAudioInterval)
-    globalAudioInterval = null
     return
   }
+
+  if (vinylPlaying.value && vinylAudioRef.value) {
+    vinylAudioRef.value.pause()
+    vinylPlaying.value = false
+  }
+
   globalAudioPlaying.value = true
-  globalAudioInterval = setInterval(() => {
-    if (globalAudioProgress.value >= 100) {
-      globalAudioProgress.value = 0
-    } else {
-      globalAudioProgress.value += 0.5
-    }
-  }, 200)
+  el.play().catch(() => {
+    globalAudioPlaying.value = false
+  })
+}
+
+function onStickyMeta() {
+  const el = stickyAudioRef.value
+  if (el?.duration) globalAudioDuration.value = el.duration
+}
+
+function onStickyTime() {
+  const el = stickyAudioRef.value
+  if (!el) return
+  globalAudioCurrent.value = el.currentTime
+  globalAudioProgress.value = el.duration ? (el.currentTime / el.duration) * 100 : 0
+}
+
+function onStickyEnded() {
+  globalAudioPlaying.value = false
+}
+
+function seekSticky() {
+  const el = stickyAudioRef.value
+  if (!el?.duration) return
+  el.currentTime = Math.min(el.duration, el.currentTime + el.duration * 0.15)
 }
 
 function closeStickyPlayer() {
+  const el = stickyAudioRef.value
+  if (el) el.pause()
   globalAudioPlaying.value = false
-  clearInterval(globalAudioInterval)
-  globalAudioInterval = null
   audioPlayerVisible.value = false
 }
 
 function toggleVinyl() {
+  const el = vinylAudioRef.value
+  if (!el) return
+
   if (vinylPlaying.value) {
+    el.pause()
     vinylPlaying.value = false
-    clearInterval(vinylInterval)
-    vinylInterval = null
     return
   }
+
+  if (globalAudioPlaying.value && stickyAudioRef.value) {
+    stickyAudioRef.value.pause()
+    globalAudioPlaying.value = false
+  }
+
   vinylPlaying.value = true
-  vinylInterval = setInterval(() => {
-    if (vinylProgress.value >= 100) vinylProgress.value = 0
-    else vinylProgress.value += 0.4
-  }, 200)
+  el.play().catch(() => {
+    vinylPlaying.value = false
+  })
+}
+
+function onVinylMeta() {
+  const el = vinylAudioRef.value
+  if (el?.duration) vinylDuration.value = el.duration
+}
+
+function onVinylTime() {
+  const el = vinylAudioRef.value
+  if (!el) return
+  vinylCurrent.value = el.currentTime
+  vinylProgress.value = el.duration ? (el.currentTime / el.duration) * 100 : 0
+}
+
+function onVinylEnded() {
+  vinylPlaying.value = false
 }
 
 function toggleCardPlayer(index) {
-  if (cardPlayers.value[index]) {
-    cardPlayers.value[index] = false
-    clearInterval(cardIntervals[index])
-    cardIntervals[index] = null
+  const el = audioRefs.value[index]
+  if (!el) return
+
+  if (playingIndex.value === index) {
+    el.pause()
+    playingIndex.value = null
     return
   }
-  cardPlayers.value = cardPlayers.value.map((_, i) => i === index)
-  cardIntervals.forEach((_, i) => {
-    if (cardIntervals[i]) clearInterval(cardIntervals[i])
+
+  Object.entries(audioRefs.value).forEach(([i, audio]) => {
+    if (Number(i) !== index && audio) {
+      audio.pause()
+      audio.currentTime = 0
+      audioCurrent.value[i] = 0
+    }
   })
-  cardPlayers.value[index] = true
-  cardIntervals[index] = setInterval(() => {
-    if (cardProgress.value[index] >= 100) cardProgress.value[index] = 0
-    else cardProgress.value[index] += 0.5
-  }, 200)
+
+  playingIndex.value = index
+  el.play().catch(() => {
+    playingIndex.value = null
+  })
 }
 
 function cardPlayedBars(index) {
-  return Math.floor((cardProgress.value[index] / 100) * 24)
+  const duration = audioDurations.value[index]
+  if (!duration) return 0
+  const current = audioCurrent.value[index] || 0
+  return Math.floor((current / duration) * 24)
 }
 
 function runTypewriter() {
@@ -269,9 +399,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   clearTimeout(typewriterTimer)
-  clearInterval(globalAudioInterval)
-  clearInterval(vinylInterval)
-  cardIntervals.forEach((id) => id && clearInterval(id))
+  Object.values(audioRefs.value).forEach((el) => el?.pause())
+  stickyAudioRef.value?.pause()
+  vinylAudioRef.value?.pause()
   sectionObserver?.disconnect()
   counterObserver?.disconnect()
 })
@@ -386,7 +516,7 @@ onUnmounted(() => {
       <h2 class="section-title">🎧 Ouça exemplos reais</h2>
       <p class="section-sub">Cada música é feita com vocais profissionais e instrumentos reais</p>
       <div class="audio-grid">
-        <article v-for="(ex, i) in audioExamples" :key="i" class="audio-card" :style="{ borderTopColor: ex.color }">
+        <article v-for="(ex, i) in audioExamples" :key="ex.name" class="audio-card" :style="{ borderTopColor: ex.color }">
           <div class="audio-card-header">
             <span class="audio-avatar" :style="{ background: `linear-gradient(135deg, ${ex.color}, #0066a8)` }">{{ ex.initial }}</span>
             <div>
@@ -394,10 +524,19 @@ onUnmounted(() => {
               <span class="audio-card-title" :style="{ color: ex.color }">{{ ex.title }}</span>
             </div>
           </div>
-          <div class="stars">★★★★★</div>
-          <p class="audio-quote">{{ ex.text }}</p>
+
+          <audio
+            :ref="(el) => setAudioRef(i, el)"
+            :src="publicAudioUrl(ex.audio)"
+            preload="metadata"
+            class="sr-only-audio"
+            @loadedmetadata="onAudioMeta(i)"
+            @timeupdate="onAudioTime(i)"
+            @ended="onAudioEnded(i)"
+          />
+
           <div class="mini-player">
-            <button type="button" class="mini-play" @click="toggleCardPlayer(i)">{{ cardPlayers[i] ? '⏸' : '▶' }}</button>
+            <button type="button" class="mini-play" @click="toggleCardPlayer(i)">{{ playingIndex === i ? '⏸' : '▶' }}</button>
             <div class="mini-waves">
               <span
                 v-for="(h, bi) in waveHeightsCards[i]"
@@ -407,24 +546,35 @@ onUnmounted(() => {
                 :style="{ height: h + 'px', ...(bi < cardPlayedBars(i) ? { background: `linear-gradient(to top, ${ex.color}, #ffb347)` } : {}) }"
               />
             </div>
-            <span class="mini-time">0:00 / 3:45</span>
+            <span class="mini-time">{{ cardTimeDisplay(i) }}</span>
           </div>
+
+          <p class="audio-quote">{{ ex.text }}</p>
         </article>
       </div>
     </section>
 
     <!-- STICKY PLAYER -->
+    <audio
+      ref="stickyAudioRef"
+      :src="publicAudioUrl(DEMO_AUDIO_FILE)"
+      preload="metadata"
+      class="sr-only-audio"
+      @loadedmetadata="onStickyMeta"
+      @timeupdate="onStickyTime"
+      @ended="onStickyEnded"
+    />
     <transition name="sticky-player">
       <div v-if="audioPlayerVisible" class="sticky-player">
         <button type="button" class="sticky-play" @click="toggleGlobalAudio">{{ globalAudioPlaying ? '⏸' : '▶' }}</button>
         <div class="sticky-info">
-          <span>🎵 Exemplo — Música para Mãe</span>
-          <span class="sticky-time">{{ Math.floor(globalAudioProgress * 0.0345) }}:00 / 3:45</span>
+          <span>🎵 Exemplo — Música para Gabriele</span>
+          <span class="sticky-time">{{ formatAudioTime(globalAudioCurrent) }} / {{ formatAudioTime(globalAudioDuration) }}</span>
         </div>
         <div class="sticky-waves">
           <span v-for="(h, i) in waveHeightsGlobal" :key="i" class="sticky-bar" :class="{ played: i < globalPlayedBars }" :style="{ height: h + 'px' }" />
         </div>
-        <div class="sticky-progress" @click="globalAudioProgress = Math.min(100, globalAudioProgress + 15)">
+        <div class="sticky-progress" @click="seekSticky">
           <div class="sticky-progress-fill" :style="{ width: globalAudioProgress + '%' }" />
         </div>
         <button type="button" class="sticky-close" @click="closeStickyPlayer">✕</button>
@@ -519,6 +669,15 @@ onUnmounted(() => {
           </div>
           <div class="needle" :style="{ transform: `rotate(${needleAngle}deg)` }" />
         </div>
+        <audio
+          ref="vinylAudioRef"
+          :src="publicAudioUrl(DEMO_AUDIO_FILE)"
+          preload="metadata"
+          class="sr-only-audio"
+          @loadedmetadata="onVinylMeta"
+          @timeupdate="onVinylTime"
+          @ended="onVinylEnded"
+        />
         <div class="vinyl-controls">
           <button type="button" class="vinyl-play" @click="toggleVinyl">{{ vinylPlaying ? '⏸' : '▶' }}</button>
           <div class="vinyl-waves">
@@ -526,7 +685,7 @@ onUnmounted(() => {
           </div>
           <div>
             <strong>Sua música personalizada</strong>
-            <span class="vinyl-time">{{ Math.floor(vinylProgress * 0.0345) }}:00 / 3:45</span>
+            <span class="vinyl-time">{{ formatAudioTime(vinylCurrent) }} / {{ formatAudioTime(vinylDuration) }}</span>
           </div>
         </div>
       </div>
@@ -648,7 +807,7 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="footer-bottom">
-        <span>© 2025 Fluisom. Todos os direitos reservados.</span>
+        <span>© 2026 Fluisom. Todos os direitos reservados.</span>
         <div class="payment-pills">
           <span>PIX</span><span>Visa</span><span>Mastercard</span><span>Stripe</span>
         </div>
@@ -874,7 +1033,14 @@ onUnmounted(() => {
 .audio-card-header { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
 .audio-avatar { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; }
 .audio-card-title { display: block; font-size: 0.85rem; font-weight: 600; }
-.audio-quote { font-style: italic; color: var(--text-2); font-size: 0.9rem; line-height: 1.6; margin: 8px 0 16px; }
+.audio-quote { font-style: italic; color: var(--text-2); font-size: 0.9rem; line-height: 1.6; margin: 16px 0 0; }
+.sr-only-audio {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
 .mini-player { display: flex; align-items: center; gap: 12px; }
 .mini-play {
   width: 36px; height: 36px; border-radius: 50%; border: none; flex-shrink: 0;
