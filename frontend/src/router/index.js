@@ -26,7 +26,7 @@ const router = createRouter({
       path: '/',
       component: QuizLayout,
       children: [
-        { path: '', redirect: '/pv' },
+        { path: '', redirect: (to) => ({ path: '/pv', query: to.query }) },
         { path: 'passo/1', name: 'quiz-step-1', meta: { step: 1 }, component: () => import('../views/quiz/Step1View.vue') },
         { path: 'passo/2', name: 'quiz-step-2', meta: { step: 2 }, component: () => import('../views/quiz/Step2View.vue') },
         { path: 'passo/3', name: 'quiz-step-3', meta: { step: 3 }, component: () => import('../views/quiz/Step3View.vue') },
@@ -36,7 +36,7 @@ const router = createRouter({
         { path: 'passo/7', name: 'quiz-step-7', meta: { step: 7 }, component: () => import('../views/quiz/Step7View.vue') },
       ],
     },
-    { path: '/:pathMatch(.*)*', redirect: '/pv' },
+    { path: '/:pathMatch(.*)*', redirect: (to) => ({ path: '/pv', query: to.query }) },
   ],
   scrollBehavior() {
     return { top: 0 }
