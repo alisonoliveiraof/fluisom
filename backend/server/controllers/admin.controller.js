@@ -13,11 +13,38 @@ import {
   setAdminSetting,
   getAttributionStats,
   listRecentPaidSales,
+  getStaleMusicOrders,
 } from '../services/supabase.service.js'
 import { generateLyricsForOrder } from './lyrics.controller.js'
-import { generateMusicForOrder, retryMusicGeneration, ensureAllMusicVersions } from './music.controller.js'
+import {
+  generateMusicForOrder,
+  retryMusicGeneration,
+  ensureAllMusicVersions,
+  tryFinalizeFromSunoTask,
+} from './music.controller.js'
 import { buildMusicTitle, getGenreStyle } from '../utils/prompt.builder.js'
 import { formatDatePt } from '../utils/date.formatter.js'
+
+async function selfHealStaleMusic(limit = 5) {
+  try {
+    const stale = await getStaleMusicOrders(limit)
+    await Promise.all(
+      stale.map(async (order) => {
+        if (!order.suno_task_id) return
+        try {
+          await tryFinalizeFromSunoTask(order.id, order.suno_task_id, {
+            title: order.music_title || buildMusicTitle(order),
+            style: order.music_tags || getGenreStyle(order.genre),
+          })
+        } catch (err) {
+          console.warn('[FLUISOM] Self-heal admin falhou:', order.id, err.message)
+        }
+      }),
+    )
+  } catch (err) {
+    console.warn('[FLUISOM] Self-heal admin (lista) falhou:', err.message)
+  }
+}
 
 export function login(req, res) {
   const { secretKey } = req.body
@@ -31,6 +58,7 @@ export function login(req, res) {
 
 export async function dashboard(req, res, next) {
   try {
+    await selfHealStaleMusic(5)
     const [stats, ordersChart, { orders }, attributionStats] = await Promise.all([
       getDashboardStats(),
       getOrdersLast7Days(),
@@ -61,7 +89,20 @@ export async function orders(req, res, next) {
 
 export async function orderDetail(req, res, next) {
   try {
-    const order = await getOrderById(req.params.orderId)
+    let order = await getOrderById(req.params.orderId)
+
+    if (order.suno_task_id && ['generating_music', 'music_ready', 'preview_shown', 'payment_pending'].includes(order.status)) {
+      try {
+        const synced = await ensureAllMusicVersions(order, {
+          title: order.music_title || buildMusicTitle(order),
+          style: order.music_tags || getGenreStyle(order.genre),
+        })
+        if (synced) order = synced
+      } catch (err) {
+        console.warn('[FLUISOM] Sync no detalhe do pedido falhou:', err.message)
+      }
+    }
+
     const logs = await getGenerationLogs({ orderId: req.params.orderId, limit: 100 })
     res.json({ order, logs })
   } catch (err) {

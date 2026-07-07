@@ -14,7 +14,9 @@ function isAuthorizedCron(req) {
   if (req.headers['x-vercel-cron'] === '1') return true
   const secret = process.env.CRON_SECRET
   if (!secret) return process.env.NODE_ENV !== 'production'
-  return req.headers.authorization === `Bearer ${secret}`
+  if (req.headers.authorization === `Bearer ${secret}`) return true
+  if (req.query.secret === secret) return true
+  return false
 }
 
 router.get('/process-queue', async (req, res) => {

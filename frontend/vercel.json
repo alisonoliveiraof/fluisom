@@ -12,5 +12,9 @@
     "api/index.js": {
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    { "path": "/api/cron/poll-stale", "schedule": "*/2 * * * *" },
+    { "path": "/api/cron/process-queue", "schedule": "*/5 * * * *" }
+  ]
 }
