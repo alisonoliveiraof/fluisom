@@ -78,6 +78,8 @@ function createQuiz() {
   const paymentError = ref('')
   const pixData = ref(null)
   const pixWaiting = ref(false)
+  const verifyingPayment = ref(false)
+  const verifyMessage = ref('')
 
   const waveHeights = Array.from({ length: 40 }, () => Math.floor(Math.random() * 40 + 8))
   const videoWaveBars = Array.from({ length: 20 }, (_, i) => i)
@@ -542,6 +544,27 @@ function createQuiz() {
     return false
   }
 
+  async function verifyPaymentAndAdvance() {
+    if (verifyingPayment.value) return
+    const id = activeOrderId()
+    if (!id) {
+      verifyMessage.value = 'Pedido inválido. Volte e tente novamente.'
+      return
+    }
+    verifyingPayment.value = true
+    verifyMessage.value = ''
+    try {
+      const advanced = await checkPaidAndAdvance()
+      if (!advanced) {
+        verifyMessage.value = 'Pagamento ainda não confirmado. Se você já pagou, aguarde alguns segundos e clique novamente.'
+      }
+    } catch {
+      verifyMessage.value = 'Não foi possível verificar agora. Tente novamente em instantes.'
+    } finally {
+      verifyingPayment.value = false
+    }
+  }
+
   function startStepSixPaymentWatch() {
     clearStepSixPoll()
     stepSixPollTimer = setInterval(() => {
@@ -847,6 +870,9 @@ function createQuiz() {
     paymentError,
     pixData,
     pixWaiting,
+    verifyingPayment,
+    verifyMessage,
+    verifyPaymentAndAdvance,
     audioTimeDisplay,
     playedBars,
     qualitiesProgress,

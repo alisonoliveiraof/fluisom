@@ -16,6 +16,9 @@ const {
   paymentError,
   pixData,
   pixWaiting,
+  verifyingPayment,
+  verifyMessage,
+  verifyPaymentAndAdvance,
   onCpfInput,
   onCardNumberInput,
   onExpiryInput,
@@ -152,6 +155,17 @@ const {
           <template v-else-if="pixData?.qrCode">Aguardando PIX...</template>
           <template v-else>🔒 Pagar Agora — R$ {{ paymentAmountLabel }}</template>
         </button>
+
+        <button
+          type="button"
+          class="btn-verify-payment"
+          :disabled="verifyingPayment"
+          @click="verifyPaymentAndAdvance"
+        >
+          {{ verifyingPayment ? 'Verificando pagamento...' : '✅ Já paguei — Verificar e continuar' }}
+        </button>
+        <p v-if="verifyMessage" class="verify-message">{{ verifyMessage }}</p>
+
         <p class="payment-secure">🔒 Pagamento Seguro Via Mercado Pago. Nunca armazenamos seus dados de cartão.</p>
         <p class="payment-badges">🔒 Pagamento Seguro Via Mercado Pago | 📅 Garantia de 30 dias</p>
       </div>
