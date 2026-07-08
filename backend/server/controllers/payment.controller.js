@@ -6,6 +6,7 @@ import {
   isPaymentApproved,
   isPaymentPending,
   isPaymentRejected,
+  isPaymentRefunded,
   verifyWebhookSignature,
 } from '../services/mercadopago.service.js'
 
@@ -42,6 +43,16 @@ export async function markOrderAsPaid(orderId, { paymentId, paymentMethod, mpPay
     payment_method: paymentMethod || order.payment_method,
     status: order.status === 'delivered' ? 'delivered' : 'paid',
     paid_at: new Date().toISOString(),
+  })
+}
+
+export async function markOrderAsRefunded(orderId) {
+  const order = await getOrderById(orderId)
+  if (order.payment_status === 'refunded') {
+    return order
+  }
+  return updateOrder(orderId, {
+    payment_status: 'refunded',
   })
 }
 
@@ -163,6 +174,16 @@ export async function getOrderPaymentStatus(req, res, next) {
   try {
     const order = await getOrderById(req.params.orderId)
 
+    if (order.payment_status === 'refunded') {
+      return res.json({
+        orderId: order.id,
+        paid: false,
+        status: 'refunded',
+        paymentStatus: 'refunded',
+        message: 'Pagamento reembolsado',
+      })
+    }
+
     if (order.payment_status === 'paid') {
       return res.json({
         orderId: order.id,
@@ -233,7 +254,9 @@ export async function handleMercadoPagoWebhook(req, res) {
       return res.status(200).json({ received: true })
     }
 
-    if (isPaymentApproved(mpPayment)) {
+    if (isPaymentRefunded(mpPayment)) {
+      await markOrderAsRefunded(orderId)
+    } else if (isPaymentApproved(mpPayment)) {
       await markOrderAsPaid(orderId, {
         paymentId,
         paymentMethod: mpPayment.payment_method_id === 'pix' ? 'pix' : 'card',

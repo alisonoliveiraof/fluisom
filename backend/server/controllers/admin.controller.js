@@ -16,12 +16,27 @@ import {
   getStaleMusicOrders,
 } from '../services/supabase.service.js'
 import { generateLyricsForOrder } from './lyrics.controller.js'
+import { markOrderAsRefunded } from './payment.controller.js'
+import { fetchMercadoPagoPayment, isPaymentRefunded } from '../services/mercadopago.service.js'
 import {
   generateMusicForOrder,
   retryMusicGeneration,
   ensureAllMusicVersions,
   tryFinalizeFromSunoTask,
 } from './music.controller.js'
+
+async function reconcileRefundIfNeeded(order) {
+  if (order?.payment_status !== 'paid' || !order.payment_id) return order
+  try {
+    const mpPayment = await fetchMercadoPagoPayment(order.payment_id)
+    if (isPaymentRefunded(mpPayment)) {
+      return await markOrderAsRefunded(order.id)
+    }
+  } catch (err) {
+    console.warn('[FLUISOM] Reconciliação de reembolso falhou:', order.id, err.message)
+  }
+  return order
+}
 import { buildMusicTitle, getGenreStyle } from '../utils/prompt.builder.js'
 import { formatDatePt } from '../utils/date.formatter.js'
 
@@ -102,6 +117,8 @@ export async function orderDetail(req, res, next) {
         console.warn('[FLUISOM] Sync no detalhe do pedido falhou:', err.message)
       }
     }
+
+    order = await reconcileRefundIfNeeded(order)
 
     const logs = await getGenerationLogs({ orderId: req.params.orderId, limit: 100 })
     res.json({ order, logs })

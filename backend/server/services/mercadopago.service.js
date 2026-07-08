@@ -135,7 +135,14 @@ export function isPaymentPending(mpPayment) {
 }
 
 export function isPaymentRejected(mpPayment) {
-  return ['rejected', 'cancelled', 'refunded', 'charged_back'].includes(mpPayment?.status)
+  return ['rejected', 'cancelled'].includes(mpPayment?.status)
+}
+
+export function isPaymentRefunded(mpPayment) {
+  if (['refunded', 'charged_back'].includes(mpPayment?.status)) return true
+  // Reembolso parcial ou total pode manter status "approved" com refunds preenchido
+  if (Array.isArray(mpPayment?.refunds) && mpPayment.refunds.length > 0) return true
+  return false
 }
 
 export function verifyWebhookSignature(req) {

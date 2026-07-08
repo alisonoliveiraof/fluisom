@@ -403,6 +403,11 @@ onUnmounted(stopAutoRefresh)
               <span class="metric-value">{{ formatMoney(stats?.totalRevenue) }}</span>
               <span class="metric-label">Receita Total</span>
             </div>
+            <div v-if="(stats?.refunded || 0) > 0" class="metric metric-rose">
+              <span class="metric-icon">↩️</span>
+              <span class="metric-value">{{ formatMoney(stats?.refundedAmount) }}</span>
+              <span class="metric-label">Reembolsado ({{ stats?.refunded }})</span>
+            </div>
           </div>
 
           <div class="chart-card">
@@ -808,6 +813,7 @@ onUnmounted(stopAutoRefresh)
 .metric-amber .metric-value { color: #ffb347; }
 .metric-green .metric-value { color: #22c55e; }
 .metric-coral .metric-value { color: #ff6b6b; }
+.metric-rose .metric-value { color: #f43f5e; }
 .metric.pulse { animation: pulse 1.5s infinite; }
 
 @keyframes pulse {

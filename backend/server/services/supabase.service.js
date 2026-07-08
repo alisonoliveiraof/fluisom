@@ -1,5 +1,16 @@
 import getSupabase from '../config/supabase.config.js'
 
+// Brasil aboliu o horário de verão em 2019, então o fuso é fixo em UTC-3.
+const BRAZIL_OFFSET_MS = 3 * 60 * 60 * 1000
+
+// Retorna o instante (em UTC) correspondente à meia-noite de hoje no horário do Brasil.
+// Necessário porque os servidores da Vercel rodam em UTC.
+function startOfTodayBrazil() {
+  const brazilNow = new Date(Date.now() - BRAZIL_OFFSET_MS)
+  brazilNow.setUTCHours(0, 0, 0, 0)
+  return new Date(brazilNow.getTime() + BRAZIL_OFFSET_MS)
+}
+
 export async function createOrder(data) {
   const supabase = getSupabase()
   const { data: order, error } = await supabase
@@ -77,8 +88,7 @@ export async function getGenerationLogs({ orderId, limit = 50 } = {}) {
 
 export async function getDashboardStats() {
   const supabase = getSupabase()
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const today = startOfTodayBrazil()
 
   const { data: orders, error } = await supabase.from('quiz_orders').select('*')
   if (error) throw new Error(`Erro ao buscar stats: ${error.message}`)
@@ -90,8 +100,12 @@ export async function getDashboardStats() {
   const musicReady = orders.filter((o) => o.status === 'music_ready').length
   const paid = orders.filter((o) => o.status === 'paid' || o.status === 'delivered').length
   const failed = orders.filter((o) => o.status === 'failed').length
+  const refunded = orders.filter((o) => o.payment_status === 'refunded').length
   const totalRevenue = orders
     .filter((o) => o.payment_status === 'paid')
+    .reduce((sum, o) => sum + Number(o.payment_amount || 0), 0)
+  const refundedAmount = orders
+    .filter((o) => o.payment_status === 'refunded')
     .reduce((sum, o) => sum + Number(o.payment_amount || 0), 0)
 
   const completed = orders.filter((o) => o.music_generation_completed_at && o.music_generation_started_at)
@@ -110,7 +124,9 @@ export async function getDashboardStats() {
     musicReady,
     paid,
     failed,
+    refunded,
     totalRevenue,
+    refundedAmount,
     avgGenerationTimeMs: Math.round(avgGenerationTimeMs),
   }
 }
@@ -118,19 +134,25 @@ export async function getDashboardStats() {
 export async function getOrdersLast7Days() {
   const supabase = getSupabase()
   const days = []
-  const now = new Date()
+
+  const todayStart = startOfTodayBrazil()
 
   for (let i = 6; i >= 0; i--) {
-    const start = new Date(now)
-    start.setHours(0, 0, 0, 0)
+    const start = new Date(todayStart)
     start.setDate(start.getDate() - i)
 
     const end = new Date(start)
     end.setDate(end.getDate() + 1)
 
+    const brazilLabelDate = new Date(start.getTime() - BRAZIL_OFFSET_MS)
+
     days.push({
-      date: start.toISOString().slice(0, 10),
-      label: start.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric' }),
+      date: brazilLabelDate.toISOString().slice(0, 10),
+      label: brazilLabelDate.toLocaleDateString('pt-BR', {
+        weekday: 'short',
+        day: 'numeric',
+        timeZone: 'UTC',
+      }),
       start: start.toISOString(),
       end: end.toISOString(),
     })
@@ -245,8 +267,7 @@ export async function getStaleMusicOrders(limit = 10) {
 
 export async function countTodayGenerations() {
   const supabase = getSupabase()
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const today = startOfTodayBrazil()
   const { count, error } = await supabase
     .from('quiz_orders')
     .select('*', { count: 'exact', head: true })
