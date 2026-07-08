@@ -146,15 +146,18 @@ export async function submitMusicStep(req, res, next) {
   }
 }
 
+const PRE_PAID_STATUSES = ['music_ready', 'preview_shown', 'payment_pending']
+
 function mapOrderForClient(order) {
   const isPaid = order.payment_status === 'paid'
   const versions = mapVersionsForClient(order, { includeFullAudio: isPaid })
   const primary = versions[0]
+  const effectiveStatus = isPaid && PRE_PAID_STATUSES.includes(order.status) ? 'paid' : order.status
   return {
     orderId: order.id,
     honoredName: order.honored_name,
-    status: order.status,
-    statusLabel: orderStatusLabel(order.status),
+    status: effectiveStatus,
+    statusLabel: orderStatusLabel(effectiveStatus),
     musicTitle: order.music_title,
     previewAudioUrl: primary?.previewAudioUrl || order.preview_audio_url,
     fullAudioUrl: isPaid ? primary?.fullAudioUrl || order.full_audio_url : null,
@@ -166,8 +169,19 @@ function mapOrderForClient(order) {
     createdAt: order.created_at,
     canPreview: versions.some((v) => v.previewAudioUrl) && ['music_ready', 'preview_shown', 'payment_pending', 'paid', 'delivered'].includes(order.status),
     canDownload: isPaid && versions.some((v) => v.fullAudioUrl),
-    needsPayment: ['music_ready', 'preview_shown', 'payment_pending'].includes(order.status) && !isPaid,
+    needsPayment: PRE_PAID_STATUSES.includes(order.status) && !isPaid,
   }
+}
+
+async function healPaidStatusIfNeeded(order) {
+  if (order.payment_status === 'paid' && PRE_PAID_STATUSES.includes(order.status)) {
+    try {
+      return await updateOrder(order.id, { status: 'paid' })
+    } catch (err) {
+      console.warn('[FLUISOM] Falha ao normalizar status pago:', order.id, err.message)
+    }
+  }
+  return order
 }
 
 export async function getMyOrders(req, res, next) {
@@ -198,7 +212,8 @@ export async function getMyOrders(req, res, next) {
     orders = await Promise.all(
       orders.map(async (order) => {
         try {
-          return await syncMusicFromSunoIfNeeded(order)
+          const synced = await syncMusicFromSunoIfNeeded(order)
+          return await healPaidStatusIfNeeded(synced)
         } catch {
           return order
         }
@@ -239,7 +254,8 @@ async function syncMusicFromSunoIfNeeded(order, { blocking = true } = {}) {
 
 export async function getQuizStatus(req, res, next) {
   try {
-    const order = await syncMusicFromSunoIfNeeded(await getOrderById(req.params.orderId), { blocking: true })
+    let order = await syncMusicFromSunoIfNeeded(await getOrderById(req.params.orderId), { blocking: true })
+    order = await healPaidStatusIfNeeded(order)
     const progress = orderStatusToProgress(order.status, order.suno_status)
 
     const versions = mapVersionsForClient(order)
