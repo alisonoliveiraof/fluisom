@@ -508,12 +508,49 @@ function createQuiz() {
   }
 
   let paymentPollTimer = null
+  let stepSixPollTimer = null
 
   function clearPaymentPoll() {
     if (paymentPollTimer) {
       clearInterval(paymentPollTimer)
       paymentPollTimer = null
     }
+  }
+
+  function clearStepSixPoll() {
+    if (stepSixPollTimer) {
+      clearInterval(stepSixPollTimer)
+      stepSixPollTimer = null
+    }
+  }
+
+  async function checkPaidAndAdvance() {
+    const id = activeOrderId()
+    if (!id) return false
+    try {
+      const status = await getQuizPaymentStatus(id)
+      if (status.paid) {
+        clearStepSixPoll()
+        clearPaymentPoll()
+        pixWaiting.value = false
+        goToStep(7)
+        return true
+      }
+    } catch {
+      // ignora falha de verificação
+    }
+    return false
+  }
+
+  function startStepSixPaymentWatch() {
+    clearStepSixPoll()
+    stepSixPollTimer = setInterval(() => {
+      if (Number(route.meta.step) !== 6) {
+        clearStepSixPoll()
+        return
+      }
+      void checkPaidAndAdvance()
+    }, 5000)
   }
 
   async function pollPaymentUntilPaid(orderIdValue) {
@@ -750,6 +787,10 @@ function createQuiz() {
         router.replace({ name: route.name, query: nextQuery })
       }
 
+      if (step !== 6) {
+        clearStepSixPoll()
+      }
+
       if (step === 4 && activeOrderId() && !pollTimer && !generationLoading.value) {
         resumeGenerationIfNeeded()
       }
@@ -759,8 +800,13 @@ function createQuiz() {
       if (step === 6 && route.query.orderId && form.email) {
         await ensureContactSaved()
       }
+      if (step === 6 && activeOrderId()) {
+        const advanced = await checkPaidAndAdvance()
+        if (!advanced) startStepSixPaymentWatch()
+      }
       if (step === 7) showConfetti.value = true
     },
+    { immediate: true },
   )
 
   onUnmounted(() => {
@@ -768,6 +814,7 @@ function createQuiz() {
     clearVideoInterval()
     clearPollTimer()
     clearPaymentPoll()
+    clearStepSixPoll()
   })
 
   return {
